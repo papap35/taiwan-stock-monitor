@@ -16,6 +16,31 @@ const SYSTEM_PROMPT = `你是一位專業的台股投資分析師，擁有豐富
 
 重要聲明：以下分析僅供參考，不構成投資建議，投資人應自行判斷風險。`;
 
+/**
+ * 設定 SSE 必要的 headers 並立即 flush
+ * 缺少 flushHeaders() 會讓 chunk 卡在 Express 緩衝區直到連線結束
+ * X-Accel-Buffering: no 告訴 Railway / Nginx 不要緩衝這個回應
+ */
+function initSSE(res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // 關閉 Nginx 緩衝（Railway 需要）
+  res.flushHeaders();                        // 立即把 headers 推出去，建立 SSE 通道
+}
+
+function writeChunk(res, text) {
+  res.write(`data: ${JSON.stringify({ text })}\n\n`);
+  // 確保每個 chunk 立即推送，不等緩衝區滿
+  if (typeof res.flush === 'function') res.flush();
+}
+
+function writeError(res, message) {
+  res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+  if (typeof res.flush === 'function') res.flush();
+  res.end();
+}
+
 // POST /api/ai/analyze — 個股 AI 分析
 router.post('/analyze', async (req, res) => {
   const { code, name, analysisType = 'full' } = req.body;
@@ -47,14 +72,11 @@ router.post('/analyze', async (req, res) => {
 
 請以條列格式，分項說明各分析重點，最後給出一句清晰的操作結論。`;
 
-  try {
-    // 使用 streaming 回應
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+  initSSE(res);
 
+  try {
     const stream = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
@@ -63,20 +85,15 @@ router.post('/analyze', async (req, res) => {
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+        writeChunk(res, chunk.delta.text);
       }
     }
 
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
-    console.error('[AI] analyze error:', err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'AI 分析服務暫時無法使用' });
-    } else {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-      res.end();
-    }
+    console.error('[AI] /analyze error:', err.message, err.status ?? '');
+    writeError(res, `AI 分析失敗：${err.message}`);
   }
 });
 
@@ -84,7 +101,7 @@ router.post('/analyze', async (req, res) => {
 router.post('/market', async (req, res) => {
   const { taiex, breadth } = req.body;
 
-  let marketData = '（請提供大盤資料）';
+  let marketData = '（前端未傳入大盤資料）';
   if (taiex) {
     marketData = `
 加權指數：${taiex.value?.toLocaleString()} 點
@@ -107,13 +124,11 @@ ${marketData}
 
 請簡潔有力，每點不超過 2 句。`;
 
-  try {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+  initSSE(res);
 
+  try {
     const stream = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 800,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
@@ -122,15 +137,15 @@ ${marketData}
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+        writeChunk(res, chunk.delta.text);
       }
     }
 
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
-    if (!res.headersSent) res.status(500).json({ error: 'AI 服務暫時無法使用' });
-    else { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.end(); }
+    console.error('[AI] /market error:', err.message, err.status ?? '');
+    writeError(res, `AI 分析失敗：${err.message}`);
   }
 });
 
