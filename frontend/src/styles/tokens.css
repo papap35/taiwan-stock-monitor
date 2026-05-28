@@ -1,0 +1,111 @@
+/* ────────────────────────────────────────────────
+   Design Tokens — 台股看盤系統
+   Light mode (預設) / Dark mode (@media)
+──────────────────────────────────────────────── */
+
+:root {
+  /* ── 文字顏色 ─────────────────────────────── */
+  --color-text-primary:     #111827;
+  --color-text-secondary:   #6b7280;
+  --color-text-tertiary:    #9ca3af;
+  --color-text-disabled:    #d1d5db;
+  --color-text-info:        #1d4ed8;
+  --color-text-success:     #15803d;
+  --color-text-warning:     #b45309;
+  --color-text-danger:      #b91c1c;
+
+  /* ── 背景顏色 ─────────────────────────────── */
+  --color-background-primary:   #ffffff;
+  --color-background-secondary: #f3f4f6;
+  --color-background-tertiary:  #e5e7eb;
+  --color-background-info:      #eff6ff;
+  --color-background-success:   #f0fdf4;
+  --color-background-warning:   #fffbeb;
+  --color-background-danger:    #fef2f2;
+
+  /* ── 邊框顏色 ─────────────────────────────── */
+  --color-border-primary:   #111827;
+  --color-border-secondary: #d1d5db;
+  --color-border-tertiary:  #e5e7eb;
+  --color-border-info:      #93c5fd;
+  --color-border-success:   #86efac;
+  --color-border-warning:   #fcd34d;
+  --color-border-danger:    #fca5a5;
+
+  /* ── 品牌 / 互動色 ───────────────────────── */
+  --color-brand:            #1d4ed8;
+  --color-brand-hover:      #1e40af;
+  --color-brand-light:      #eff6ff;
+
+  /* ── 台股漲跌色（台式：漲紅跌綠）────────── */
+  --color-up:               #ef4444;
+  --color-up-bg:            #fee2e2;
+  --color-up-text:          #991b1b;
+  --color-down:             #22c55e;
+  --color-down-bg:          #dcfce7;
+  --color-down-text:        #166534;
+  --color-flat:             #6b7280;
+
+  /* ── Border Radius ───────────────────────── */
+  --border-radius-sm:   4px;
+  --border-radius-md:   8px;
+  --border-radius-lg:   12px;
+  --border-radius-xl:   16px;
+  --border-radius-full: 9999px;
+
+  /* ── Font ────────────────────────────────── */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+               'PingFang TC', 'Noto Sans TC', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+
+  /* ── Shadow ──────────────────────────────── */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:  0 4px 6px rgba(0,0,0,.07);
+  --shadow-lg:  0 10px 15px rgba(0,0,0,.08);
+}
+
+/* ── Dark Mode ───────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text-primary:     #f9fafb;
+    --color-text-secondary:   #9ca3af;
+    --color-text-tertiary:    #6b7280;
+    --color-text-disabled:    #374151;
+    --color-text-info:        #93c5fd;
+    --color-text-success:     #86efac;
+    --color-text-warning:     #fcd34d;
+    --color-text-danger:      #fca5a5;
+
+    --color-background-primary:   #111827;
+    --color-background-secondary: #1f2937;
+    --color-background-tertiary:  #374151;
+    --color-background-info:      #1e3a5f;
+    --color-background-success:   #14532d;
+    --color-background-warning:   #451a03;
+    --color-background-danger:    #450a0a;
+
+    --color-border-primary:   #f9fafb;
+    --color-border-secondary: #374151;
+    --color-border-tertiary:  #1f2937;
+    --color-border-info:      #1d4ed8;
+    --color-border-success:   #15803d;
+    --color-border-warning:   #b45309;
+    --color-border-danger:    #b91c1c;
+
+    --color-brand:            #3b82f6;
+    --color-brand-hover:      #2563eb;
+    --color-brand-light:      #1e3a5f;
+
+    --color-up:               #f87171;
+    --color-up-bg:            #450a0a;
+    --color-up-text:          #fca5a5;
+    --color-down:             #4ade80;
+    --color-down-bg:          #14532d;
+    --color-down-text:        #86efac;
+    --color-flat:             #9ca3af;
+
+    --shadow-sm:  0 1px 2px rgba(0,0,0,.3);
+    --shadow-md:  0 4px 6px rgba(0,0,0,.4);
+    --shadow-lg:  0 10px 15px rgba(0,0,0,.5);
+  }
+}

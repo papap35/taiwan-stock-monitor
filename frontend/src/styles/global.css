@@ -1,0 +1,124 @@
+/* ────────────────────────────────────────────────
+   Global Reset & Base Styles
+──────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 14px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary);
+  line-height: 1.5;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── 數字等寬（價格、漲跌幅）────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 漲跌顏色 utility ────────────────────────── */
+.text-up   { color: var(--color-up); }
+.text-down { color: var(--color-down); }
+.text-flat { color: var(--color-flat); }
+
+/* ── 捲軸美化 ────────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border-secondary); border-radius: 2px; }
+
+/* ── 輸入元素 reset ──────────────────────────── */
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button { cursor: pointer; }
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+}
+
+/* ── Card 共用樣式 ───────────────────────────── */
+.card {
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+/* ── Badge ───────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--border-radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.badge-up      { background: var(--color-up-bg);      color: var(--color-up-text); }
+.badge-down    { background: var(--color-down-bg);    color: var(--color-down-text); }
+.badge-neutral { background: var(--color-background-tertiary); color: var(--color-text-secondary); }
+.badge-info    { background: var(--color-background-info);    color: var(--color-text-info); }
+.badge-warning { background: var(--color-background-warning); color: var(--color-text-warning); }
+
+/* ── Button ──────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  transition: background .15s, border-color .15s;
+}
+.btn:hover    { background: var(--color-background-secondary); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--color-brand);
+  color: #fff;
+  border-color: var(--color-brand);
+}
+.btn-primary:hover    { background: var(--color-brand-hover); border-color: var(--color-brand-hover); }
+.btn-primary:disabled { background: var(--color-border-secondary); border-color: transparent; }
+
+.btn-danger {
+  background: var(--color-background-danger);
+  color: var(--color-text-danger);
+  border-color: var(--color-border-danger);
+}
+
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+
+/* ── Input ───────────────────────────────────── */
+.input {
+  padding: 6px 10px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  width: 100%;
+  transition: border-color .15s;
+}
+.input:focus { border-color: var(--color-brand); }
+.input::placeholder { color: var(--color-text-tertiary); }
