@@ -2,8 +2,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+RUN corepack enable && corepack prepare yarn@stable --activate
+
+COPY package.json yarn.lock* ./
+RUN yarn install --frozen-lockfile --production
 
 COPY src ./src
 

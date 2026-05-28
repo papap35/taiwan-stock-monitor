@@ -27,8 +27,8 @@ cd taiwan-stock-monitor
 cd backend
 cp .env.example .env
 # 編輯 .env，填入 ANTHROPIC_API_KEY
-npm install
-npm run dev
+yarn install
+yarn dev
 ```
 
 ### 3. 前端設定
@@ -37,8 +37,8 @@ npm run dev
 cd frontend
 cp .env.example .env
 # 開發環境不需要修改 .env（使用 Vite proxy）
-npm install
-npm run dev
+yarn install
+yarn dev
 ```
 
 開啟 http://localhost:5173 即可看到系統。
