@@ -3,87 +3,185 @@ import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 
 export default function Watchlist() {
-  const { watchlist, quotes, addToWatchlist, removeFromWatchlist, getColor } = useStockStore();
+  const { watchlist, quotes, addToWatchlist, removeFromWatchlist } = useStockStore();
   const [form, setForm] = useState({ code: '', name: '', cost: '' });
   const [adding, setAdding] = useState(false);
+  const [err, setErr] = useState('');
 
   const add = async () => {
     if (!form.code.trim()) return;
     setAdding(true);
+    setErr('');
     let name = form.name || '';
-    // 嘗試抓報價取得名稱
     if (!name) {
       try {
         const q = await api.getQuotes([form.code]);
         name = q.quotes[form.code]?.name || form.code;
-      } catch {
-        name = form.code;
-      }
+      } catch { name = form.code; }
     }
-    addToWatchlist({ code: form.code.trim(), name, cost: form.cost ? parseFloat(form.cost) : null });
+    addToWatchlist({ code: form.code.trim().toUpperCase(), name, cost: form.cost ? parseFloat(form.cost) : null });
     setForm({ code: '', name: '', cost: '' });
     setAdding(false);
   };
 
   const fmt = (v, dec = 2) => typeof v === 'number' ? v.toFixed(dec) : '—';
-  const card = { background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: 12, padding: 14, marginBottom: 12 };
-  const inp = { padding: '6px 10px', border: '0.5px solid #d1d5db', borderRadius: 8, fontSize: 13 };
+
+  // 計算投資組合摘要
+  const portfolio = watchlist.map(w => {
+    const q = quotes[w.code];
+    const pnl = q && w.cost ? +((q.price / w.cost - 1) * 100).toFixed(2) : null;
+    return { ...w, q, pnl };
+  });
+  const withPnl = portfolio.filter(p => p.pnl !== null);
+  const totalPnl = withPnl.length
+    ? +(withPnl.reduce((s, p) => s + p.pnl, 0) / withPnl.length).toFixed(2)
+    : null;
+
+  const inp = {
+    padding: '7px 10px',
+    border: '1px solid var(--color-border-secondary)',
+    borderRadius: 6,
+    background: 'var(--color-background-secondary)',
+    color: 'var(--color-text-primary)',
+    fontSize: 13,
+  };
 
   return (
     <div>
-      <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>加入自選股</div>
+      {/* 投資組合摘要 */}
+      {portfolio.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${withPnl.length > 0 ? 3 : 2}, 1fr)`,
+          gap: 8, marginBottom: 10,
+        }}>
+          <div className="stat-tile">
+            <div className="stat-label">自選股數</div>
+            <div className="stat-value" style={{ color: 'var(--color-text-primary)' }}>
+              {watchlist.length}
+            </div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">有報價</div>
+            <div className="stat-value" style={{ color: 'var(--color-brand)' }}>
+              {portfolio.filter(p => p.q).length}
+            </div>
+          </div>
+          {withPnl.length > 0 && (
+            <div className="stat-tile">
+              <div className="stat-label">平均損益</div>
+              <div className="stat-value" style={{ color: totalPnl >= 0 ? '#ff4d4f' : '#00c48c' }}>
+                {totalPnl > 0 ? '+' : ''}{totalPnl}%
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 新增表單 */}
+      <div style={{
+        background: 'var(--color-background-card)',
+        border: '1px solid var(--color-border-tertiary)',
+        borderRadius: 8, padding: 14, marginBottom: 10,
+      }}>
+        <div className="section-label">新增自選股</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input style={{ ...inp, width: 80 }} placeholder="代號" value={form.code}
-            onChange={e => setForm(p => ({ ...p, code: e.target.value }))} />
-          <input style={{ ...inp, flex: 1 }} placeholder="名稱（可自動查詢）" value={form.name}
+          <input style={{ ...inp, width: 88 }} placeholder="代號" value={form.code}
+            onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
+            onKeyDown={e => e.key === 'Enter' && add()} />
+          <input style={{ ...inp, flex: 1, minWidth: 120 }} placeholder="名稱（可自動查詢）" value={form.name}
             onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
-          <input style={{ ...inp, width: 100 }} type="number" placeholder="持有成本" value={form.cost}
+          <input style={{ ...inp, width: 110 }} type="number" placeholder="持有成本（選填）" value={form.cost}
             onChange={e => setForm(p => ({ ...p, cost: e.target.value }))} />
-          <button onClick={add} disabled={adding}
-            style={{ padding: '6px 14px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-            + 加入
+          <button onClick={add} disabled={adding || !form.code} className="btn btn-primary"
+            style={{ minWidth: 64 }}>
+            {adding ? '加入中...' : '+ 加入'}
           </button>
         </div>
+        {err && <div style={{ fontSize: 11, color: 'var(--color-text-danger)', marginTop: 6 }}>{err}</div>}
       </div>
 
-      <div style={{ background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: 12, overflow: 'hidden' }}>
+      {/* 股票列表 */}
+      <div style={{
+        background: 'var(--color-background-card)',
+        border: '1px solid var(--color-border-tertiary)',
+        borderRadius: 8, overflow: 'hidden',
+      }}>
         {watchlist.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>尚未加入自選股</div>
-        ) : watchlist.map(w => {
-          const q = quotes[w.code];
-          const pnl = q && w.cost ? +((q.price / w.cost - 1) * 100).toFixed(2) : null;
-          const color = q ? getColor(q.changePercent) : 'inherit';
-          return (
-            <div key={w.code} style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '0.5px solid #f3f4f6', fontSize: 13 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500 }}>{w.name} <span style={{ color: '#9ca3af', fontSize: 12 }}>{w.code}</span></div>
-                {w.cost && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>成本 ${w.cost}</div>}
-              </div>
-              {q ? (
-                <>
-                  <span style={{ width: 72, textAlign: 'right', fontWeight: 500, color }}>{fmt(q.price, q.price >= 100 ? 1 : 2)}</span>
-                  <span style={{ width: 72, textAlign: 'right' }}>
-                    <span style={{ background: q.changePercent >= 0 ? '#fee2e2' : '#dcfce7', color: q.changePercent >= 0 ? '#991b1b' : '#166534', padding: '1px 6px', borderRadius: 6, fontSize: 11 }}>
-                      {q.changePercent >= 0 ? '+' : ''}{fmt(q.changePercent)}%
-                    </span>
-                  </span>
-                  {pnl !== null && (
-                    <span style={{ width: 72, textAlign: 'right', fontSize: 12, fontWeight: 500, color: pnl >= 0 ? '#ef4444' : '#22c55e' }}>
-                      {pnl >= 0 ? '+' : ''}{pnl}%
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span style={{ color: '#9ca3af', fontSize: 12, width: 160, textAlign: 'right' }}>載入中...</span>
-              )}
-              <button onClick={() => removeFromWatchlist(w.code)}
-                style={{ marginLeft: 8, padding: '3px 8px', background: 'transparent', border: '0.5px solid #fca5a5', color: '#dc2626', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
-                移除
-              </button>
-            </div>
-          );
-        })}
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+            <div style={{ fontSize: 24, marginBottom: 8, opacity: .3 }}>◉</div>
+            尚未加入自選股
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--color-background-secondary)' }}>
+                {['名稱 / 代號', '現價', '漲跌幅', '持有成本', '損益%', ''].map((h, i) => (
+                  <th key={i} style={{
+                    padding: '7px 10px', fontSize: 10, fontWeight: 700,
+                    letterSpacing: '.07em', textTransform: 'uppercase',
+                    color: 'var(--color-text-tertiary)',
+                    textAlign: i === 0 ? 'left' : 'right',
+                    borderBottom: '1px solid var(--color-border-tertiary)',
+                    whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.map(({ code, name, cost, q, pnl }) => {
+                const up = q && q.changePercent > 0;
+                const flat = q && q.changePercent === 0;
+                const qColor = !q ? '#64748b' : flat ? '#64748b' : up ? '#ff4d4f' : '#00c48c';
+                const pnlColor = pnl === null ? '#64748b' : pnl >= 0 ? '#ff4d4f' : '#00c48c';
+                return (
+                  <tr key={code} style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.025)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '9px 10px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{code}</div>
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: qColor }}>
+                      {q ? fmt(q.price, q.price >= 100 ? 1 : 2) : '—'}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right' }}>
+                      {q ? (
+                        <span style={{
+                          display: 'inline-block', padding: '2px 7px', borderRadius: 3,
+                          background: up ? 'rgba(255,77,79,.12)' : flat ? 'rgba(100,116,139,.1)' : 'rgba(0,196,140,.12)',
+                          color: qColor, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        }}>
+                          {q.changePercent > 0 ? '+' : ''}{q.changePercent.toFixed(2)}%
+                        </span>
+                      ) : <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                      {cost ? `$${cost}` : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, color: pnlColor }}>
+                      {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl}%` : <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400, fontSize: 11 }}>未設成本</span>}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right' }}>
+                      <button onClick={() => removeFromWatchlist(code)}
+                        style={{
+                          padding: '2px 8px', background: 'transparent',
+                          border: '1px solid rgba(248,113,113,.2)', color: 'rgba(248,113,113,.6)',
+                          borderRadius: 4, cursor: 'pointer', fontSize: 11,
+                          transition: 'all .15s',
+                        }}
+                        onMouseEnter={e => { e.target.style.borderColor = '#f87171'; e.target.style.color = '#f87171'; }}
+                        onMouseLeave={e => { e.target.style.borderColor = 'rgba(248,113,113,.2)'; e.target.style.color = 'rgba(248,113,113,.6)'; }}
+                      >
+                        移除
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
