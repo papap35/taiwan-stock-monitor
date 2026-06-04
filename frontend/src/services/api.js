@@ -22,6 +22,7 @@ export const api = {
 
   // 個股
   getQuotes: (codes) => apiFetch(`/api/stocks/${codes.join(',')}`),
+  getHistory: (code, months = 3) => apiFetch(`/api/stocks/${code}/history?months=${months}`),
 
   // 警報
   getAlerts: () => apiFetch('/api/alerts'),

@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
+import StockChart from './StockChart';
 
 export default function Watchlist() {
   const { watchlist, quotes, addToWatchlist, removeFromWatchlist } = useStockStore();
   const [form, setForm] = useState({ code: '', name: '', cost: '' });
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState('');
+  const [chartStock, setChartStock] = useState(null);
 
   const add = async () => {
     if (!form.code.trim()) return;
@@ -48,6 +50,7 @@ export default function Watchlist() {
 
   return (
     <div>
+      {chartStock && <StockChart stock={chartStock} onClose={() => setChartStock(null)} />}
       {/* 投資組合摘要 */}
       {portfolio.length > 0 && (
         <div style={{
@@ -116,7 +119,7 @@ export default function Watchlist() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-background-secondary)' }}>
-                {['名稱 / 代號', '現價', '漲跌幅', '持有成本', '損益%', ''].map((h, i) => (
+                {['名稱 / 代號', '現價', '漲跌幅', '持有成本', '損益%', '', ''].map((h, i) => (
                   <th key={i} style={{
                     padding: '7px 10px', fontSize: 10, fontWeight: 700,
                     letterSpacing: '.07em', textTransform: 'uppercase',
@@ -163,7 +166,19 @@ export default function Watchlist() {
                       {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl}%` : <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400, fontSize: 11 }}>未設成本</span>}
                     </td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>
-                      <button onClick={() => removeFromWatchlist(code)}
+                      <button
+                      onClick={() => setChartStock({ code, name, price: q?.price, changePercent: q?.changePercent })}
+                      style={{
+                        padding: '2px 8px', background: 'transparent',
+                        border: '1px solid var(--color-border-secondary)',
+                        color: 'var(--color-text-tertiary)',
+                        borderRadius: 4, cursor: 'pointer', fontSize: 11,
+                        transition: 'all .15s', marginRight: 4,
+                      }}
+                      onMouseEnter={e => { e.target.style.borderColor = 'var(--color-brand)'; e.target.style.color = 'var(--color-brand)'; }}
+                      onMouseLeave={e => { e.target.style.borderColor = 'var(--color-border-secondary)'; e.target.style.color = 'var(--color-text-tertiary)'; }}
+                    >K線</button>
+                    <button onClick={() => removeFromWatchlist(code)}
                         style={{
                           padding: '2px 8px', background: 'transparent',
                           border: '1px solid rgba(248,113,113,.2)', color: 'rgba(248,113,113,.6)',

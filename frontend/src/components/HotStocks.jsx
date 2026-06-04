@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
+import StockChart from './StockChart';
 
 const FILTERS = [
   { value: 'vol',    label: '成交量排行', short: '成交量' },
@@ -22,6 +23,7 @@ export function HotStocks() {
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
+  const [chartStock, setChartStock] = useState(null);
 
   const load = useCallback(async (filter) => {
     setLoading(true);
@@ -69,6 +71,7 @@ export function HotStocks() {
 
   return (
     <div>
+      {chartStock && <StockChart stock={chartStock} onClose={() => setChartStock(null)} />}
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         {FILTERS.map(f => (
@@ -109,6 +112,7 @@ export function HotStocks() {
               <Th k="volume">成交量</Th>
               <Th k="high">最高</Th>
               <Th k="low">最低</Th>
+              <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--color-border-tertiary)', width: 52 }} />
             </tr>
           </thead>
           <tbody>
@@ -174,6 +178,22 @@ export function HotStocks() {
                   </td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, color: 'rgba(0,196,140,.7)', fontFamily: 'var(--font-mono)' }}>
                     {fmt(s.low, s.low >= 100 ? 1 : 2)}
+                  </td>
+                  <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => setChartStock(s)}
+                      title="查看K線圖"
+                      style={{
+                        padding: '3px 7px', borderRadius: 4, fontSize: 11,
+                        border: '1px solid var(--color-border-secondary)',
+                        background: 'transparent', color: 'var(--color-text-tertiary)',
+                        cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.color = 'var(--color-brand)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border-secondary)'; e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+                    >
+                      K線
+                    </button>
                   </td>
                 </tr>
               );

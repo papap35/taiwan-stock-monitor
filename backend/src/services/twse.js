@@ -268,6 +268,68 @@ async function fetchMarketBreadth() {
   }
 }
 
+/**
+ * 抓取個股歷史日K資料（TWSE STOCK_DAY，以月為單位）
+ * @param {string} code - 股票代號，例如 '2330'
+ * @param {number} months - 要抓幾個月，預設 3
+ */
+async function fetchHistory(code, months = 3) {
+  const cacheKey = `hist_${code}_${months}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = [];
+    const now = new Date();
+
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+      const url = `https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${code}`;
+
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          timeout: 10000,
+        });
+        const data = await res.json();
+
+        if (data.stat !== 'OK' || !data.data) continue;
+
+        // 欄位：日期, 成交股數, 成交金額, 開盤價, 最高價, 最低價, 收盤價, 漲跌價差, 成交筆數
+        for (const row of data.data) {
+          const [twDate, , , open, high, low, close, , volume] = row;
+          // 民國年轉西元：113/01/02 → 2024-01-02
+          const parts = twDate.trim().split('/');
+          if (parts.length !== 3) continue;
+          const year = parseInt(parts[0]) + 1911;
+          const month = parts[1].padStart(2, '0');
+          const day = parts[2].padStart(2, '0');
+          const time = Math.floor(new Date(`${year}-${month}-${day}T00:00:00+08:00`).getTime() / 1000);
+
+          const toNum = s => parseFloat(String(s).replace(/,/g, '')) || 0;
+          const o = toNum(open), h = toNum(high), l = toNum(low), c = toNum(close);
+          if (!o || !h || !l || !c) continue;
+
+          results.push({ time, open: o, high: h, low: l, close: c, volume: toNum(volume) });
+        }
+      } catch (e) {
+        console.warn(`[TWSE] fetchHistory ${code} ${dateStr}:`, e.message);
+      }
+    }
+
+    // 依時間排序並去重
+    results.sort((a, b) => a.time - b.time);
+    const unique = results.filter((r, i) => i === 0 || r.time !== results[i - 1].time);
+
+    cache.set(cacheKey, unique, 3600); // 快取 1 小時
+    return unique;
+  } catch (err) {
+    console.error('[TWSE] fetchHistory error:', err.message);
+    return cache.get(cacheKey) || [];
+  }
+}
+
 module.exports = {
   fetchTaiex,
   fetchRealtimeQuotes,
@@ -277,6 +339,7 @@ module.exports = {
   fetchTopLosers,
   fetchQuote,
   fetchMarketBreadth,
+  fetchHistory,
   isTradingHours,
   POPULAR_STOCKS,
 };

@@ -15,7 +15,7 @@ const TABS = [
   { id: 'watch',    label: '自選股',   icon: '⭐' },
   { id: 'alerts',   label: '警報設定', icon: '🔔' },
   { id: 'ai',       label: 'AI 分析',  icon: '🤖' },
-  { id: 'settings', label: '系統設定', icon: '⚙️f' },
+  { id: 'settings', label: '系統設定', icon: '⚙️' },
 ];
 
 const WS_LABEL = { connected: '連線中', connecting: '連線中...', disconnected: '已斷線' };
