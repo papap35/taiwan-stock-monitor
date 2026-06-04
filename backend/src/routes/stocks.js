@@ -22,6 +22,17 @@ router.get('/:codes', async (req, res) => {
   }
 });
 
+// GET /api/stocks/:code/valuation — 個股本益比/殖利率/股價淨值比
+router.get('/:code/valuation', async (req, res) => {
+  try {
+    const all = await twse.fetchValuation();
+    const data = all[req.params.code] || null;
+    res.json({ code: req.params.code, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stocks/:code/institutional?months=3 — 個股三大法人歷史
 router.get('/:code/institutional', async (req, res) => {
   try {

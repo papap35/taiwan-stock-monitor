@@ -269,6 +269,103 @@ async function fetchMarketBreadth() {
 }
 
 /**
+ * 全市場本益比/殖利率/股價淨值比（BWIBBU_d）
+ */
+async function fetchValuation() {
+  const cacheKey = 'valuation';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const now = new Date();
+    const tw = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const dateStr = `${tw.getFullYear()}${String(tw.getMonth() + 1).padStart(2, '0')}${String(tw.getDate()).padStart(2, '0')}`;
+
+    const url = `https://www.twse.com.tw/exchangeReport/BWIBBU_d?response=json&date=${dateStr}&selectType=ALL`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
+    const data = await res.json();
+
+    if (data.stat !== 'OK' || !data.data) return cache.get(cacheKey) || {};
+
+    // 欄位：0=代號 1=名稱 2=收盤 3=殖利率% 4=股利年度 5=本益比 6=股價淨值比 7=財報年/季
+    const result = {};
+    data.data.forEach(row => {
+      const code = row[0]?.trim();
+      if (!code) return;
+      result[code] = {
+        code,
+        name:      row[1],
+        close:     parseFloat(row[2]?.replace(/,/g, '')) || 0,
+        yield:     parseFloat(row[3]) || null,
+        divYear:   row[4] || '',
+        pe:        parseFloat(row[5]) || null,
+        pb:        parseFloat(row[6]) || null,
+        period:    row[7] || '',
+      };
+    });
+
+    cache.set(cacheKey, result, 1800); // 快取 30 分鐘
+    return result;
+  } catch (err) {
+    console.error('[TWSE] fetchValuation error:', err.message);
+    return cache.get(cacheKey) || {};
+  }
+}
+
+/**
+ * 今日大盤分時 tick（MI_5MINS_INDEX，每 5 秒一筆）
+ * 回傳時每 12 筆取一筆（約 1 分鐘間隔）
+ */
+async function fetchIntradayTick() {
+  const cacheKey = 'intraday_tick';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = 'https://www.twse.com.tw/exchangeReport/MI_5MINS_INDEX?response=json';
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+    const data = await res.json();
+
+    if (data.stat !== 'OK' || !data.data) return cache.get(cacheKey) || { date: '', ticks: [], sectors: [] };
+
+    const now = new Date();
+    const tw = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const baseDate = { y: tw.getFullYear(), m: tw.getMonth(), d: tw.getDate() };
+
+    // 全量資料（每 5 秒）→ 降採樣每 12 筆取 1（1 分鐘）
+    const ticks = data.data
+      .filter((_, i) => i % 12 === 0)
+      .map(row => {
+        const parts = row[0].split(':').map(Number);
+        const ts = new Date(baseDate.y, baseDate.m, baseDate.d, parts[0], parts[1], parts[2] || 0);
+        return {
+          time:  Math.floor(ts.getTime() / 1000),
+          value: parseFloat(row[1]?.replace(/,/g, '')) || 0,
+        };
+      })
+      .filter(t => t.value > 0);
+
+    // 同時擷取今日各類股指數（收盤時最後一筆）
+    const lastRow = data.data[data.data.length - 1] || [];
+    const SECTOR_COLS = [
+      { name: '電子', col: 19 }, { name: '半導體', col: 20 }, { name: '金融', col: 31 },
+      { name: '航運', col: 29 }, { name: '電腦週邊', col: 21 }, { name: '數位雲端', col: 35 },
+    ];
+    const sectors = SECTOR_COLS.map(s => ({
+      name: s.name,
+      value: parseFloat(lastRow[s.col]?.replace(/,/g, '')) || 0,
+    })).filter(s => s.value > 0);
+
+    const result = { date: data.date, ticks, sectors };
+    cache.set(cacheKey, result, isTradingHours() ? 60 : 3600);
+    return result;
+  } catch (err) {
+    console.error('[TWSE] fetchIntradayTick error:', err.message);
+    return cache.get(cacheKey) || { date: '', ticks: [], sectors: [] };
+  }
+}
+
+/**
  * 取得今日三大法人全市場買賣超排行
  */
 async function fetchInstitutionalAll() {
@@ -498,6 +595,8 @@ module.exports = {
   fetchQuote,
   fetchMarketBreadth,
   fetchHistory,
+  fetchValuation,
+  fetchIntradayTick,
   fetchInstitutionalAll,
   fetchInstitutionalStock,
   fetchMarginStock,

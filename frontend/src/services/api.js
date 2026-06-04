@@ -26,6 +26,9 @@ export const api = {
   getInstitutional: (code, months = 3) => apiFetch(`/api/stocks/${code}/institutional?months=${months}`),
   getMargin:        (code, months = 3) => apiFetch(`/api/stocks/${code}/margin?months=${months}`),
   getMarketInstitutional: () => apiFetch('/api/market/institutional'),
+  getMarketValuation:     () => apiFetch('/api/market/valuation'),
+  getMarketIntraday:      () => apiFetch('/api/market/intraday'),
+  getStockValuation: (code)   => apiFetch(`/api/stocks/${code}/valuation`),
 
   // 警報
   getAlerts: () => apiFetch('/api/alerts'),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 import StockChart from './StockChart';
@@ -9,6 +9,11 @@ export default function Watchlist() {
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState('');
   const [chartStock, setChartStock] = useState(null);
+  const [valMap, setValMap] = useState({});
+
+  useEffect(() => {
+    api.getMarketValuation().then(data => setValMap(data || {})).catch(() => {});
+  }, []);
 
   const add = async () => {
     if (!form.code.trim()) return;
@@ -119,7 +124,7 @@ export default function Watchlist() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-background-secondary)' }}>
-                {['名稱 / 代號', '現價', '漲跌幅', '持有成本', '損益%', '', ''].map((h, i) => (
+                {['名稱 / 代號', '現價', '漲跌幅', 'P/E', '殖利率', '持有成本', '損益%', '', ''].map((h, i) => (
                   <th key={i} style={{
                     padding: '7px 10px', fontSize: 10, fontWeight: 700,
                     letterSpacing: '.07em', textTransform: 'uppercase',
@@ -158,6 +163,16 @@ export default function Watchlist() {
                           {q.changePercent > 0 ? '+' : ''}{q.changePercent.toFixed(2)}%
                         </span>
                       ) : <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      {valMap[code]?.pe
+                        ? <span style={{ color: valMap[code].pe > 30 ? '#f87171' : valMap[code].pe < 15 ? '#00c48c' : '#94a3b8' }}>{valMap[code].pe.toFixed(1)}</span>
+                        : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      {valMap[code]?.yield
+                        ? <span style={{ color: valMap[code].yield >= 5 ? '#00c48c' : '#94a3b8' }}>{valMap[code].yield.toFixed(2)}%</span>
+                        : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
                     </td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       {cost ? `$${cost}` : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}

@@ -77,7 +77,7 @@ const CHART_OPTS = (height) => ({
 
 const PERIODS = [{ label: '1M', months: 1 }, { label: '3M', months: 3 }, { label: '6M', months: 6 }, { label: '1Y', months: 12 }];
 const INDICATORS = ['OFF', 'KD', 'RSI', 'MACD'];
-const MAIN_TABS = ['K線', '法人籌碼', '融資融券'];
+const MAIN_TABS = ['K線', '法人籌碼', '融資融券', '基本面'];
 
 const fmtN = n => n == null ? '—' : n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
 const fmtColor = n => n > 0 ? '#ff4d4f' : n < 0 ? '#00c48c' : '#64748b';
@@ -91,6 +91,7 @@ export default function StockChart({ stock, onClose }) {
   const [candles, setCandles] = useState([]);
   const [instData, setInstData] = useState([]);
   const [marginData, setMarginData] = useState([]);
+  const [valuation, setValuation] = useState(null);
   const [months, setMonths] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -108,15 +109,17 @@ export default function StockChart({ stock, onClose }) {
   const loadAll = useCallback(async (m) => {
     setLoading(true); setError('');
     try {
-      const [kRes, instRes, marginRes] = await Promise.allSettled([
+      const [kRes, instRes, marginRes, valRes] = await Promise.allSettled([
         api.getHistory(stock.code, m),
         api.getInstitutional(stock.code, m),
         api.getMargin(stock.code, m),
+        api.getStockValuation(stock.code),
       ]);
       if (kRes.status === 'fulfilled') setCandles(kRes.value.candles || []);
       else setError(`K線資料載入失敗：${kRes.reason?.message}`);
       if (instRes.status === 'fulfilled') setInstData(instRes.value.data || []);
       if (marginRes.status === 'fulfilled') setMarginData(marginRes.value.data || []);
+      if (valRes.status === 'fulfilled') setValuation(valRes.value.data || null);
     } catch (e) { setError(e.message); }
     setLoading(false);
   }, [stock.code]);
@@ -377,6 +380,11 @@ export default function StockChart({ stock, onClose }) {
           {mainTab === '融資融券' && (
             <MarginPanel data={marginData} loading={loading} />
           )}
+
+          {/* 基本面 Tab */}
+          {mainTab === '基本面' && (
+            <FundamentalPanel valuation={valuation} price={price} loading={loading} />
+          )}
         </div>
 
         {/* ── 底部說明 ─────── */}
@@ -500,6 +508,105 @@ function MarginPanel({ data, loading }) {
       <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 9, color: '#334155' }}>
         <span style={{ color: 'rgba(255,77,79,.7)' }}>■ 融資餘額 (張)</span>
         <span style={{ color: 'rgba(0,196,140,.7)' }}>■ 融券餘額 (張)</span>
+      </div>
+    </div>
+  );
+}
+
+// ── 基本面子面板 ───────────────────────────────────────
+function FundamentalPanel({ valuation: v, price, loading }) {
+  if (loading) return <LoadingPlaceholder />;
+  if (!v) return <EmptyPlaceholder text="無基本面資料（ETF 或新上市股票可能無資料）" />;
+
+  // 本益比合理性判斷
+  const peJudge = !v.pe ? '—'
+    : v.pe < 10  ? { label: '偏低', color: '#00c48c', tip: '可能被低估或景氣循環低點' }
+    : v.pe < 20  ? { label: '合理', color: '#f59e0b', tip: '一般成長股合理範圍' }
+    : v.pe < 30  ? { label: '偏高', color: '#f87171', tip: '市場給予較高成長預期' }
+    : v.pe < 50  ? { label: '昂貴', color: '#ff4d4f', tip: '高成長股或市場泡沫訊號' }
+    : { label: '極高', color: '#ff4d4f', tip: '本益比過高，風險較大' };
+
+  const pbJudge = !v.pb ? '—'
+    : v.pb < 1   ? { label: '低於淨值', color: '#00c48c', tip: '股價低於每股淨資產' }
+    : v.pb < 2   ? { label: '合理',     color: '#f59e0b', tip: '' }
+    : v.pb < 5   ? { label: '偏高',     color: '#f87171', tip: '' }
+    : { label: '極高', color: '#ff4d4f', tip: '' };
+
+  const yieldJudge = !v.yield ? '—'
+    : v.yield >= 5  ? { label: '高殖利率', color: '#00c48c', tip: '適合存股' }
+    : v.yield >= 3  ? { label: '中等',     color: '#f59e0b', tip: '' }
+    : { label: '偏低', color: '#64748b', tip: '' };
+
+  const cards = [
+    {
+      label: '本益比 P/E',
+      value: v.pe ? v.pe.toFixed(2) : '—',
+      unit: '倍',
+      judge: peJudge,
+      desc: '股價 / 每股盈餘（EPS）',
+      color: '#3b82f6',
+    },
+    {
+      label: '殖利率',
+      value: v.yield ? v.yield.toFixed(2) : '—',
+      unit: '%',
+      judge: yieldJudge,
+      desc: `股利年度 ${v.divYear ? `民國 ${v.divYear} 年` : '—'}`,
+      color: '#10b981',
+    },
+    {
+      label: '股價淨值比 P/B',
+      value: v.pb ? v.pb.toFixed(2) : '—',
+      unit: '倍',
+      judge: pbJudge,
+      desc: '股價 / 每股淨資產',
+      color: '#8b5cf6',
+    },
+    {
+      label: '財報週期',
+      value: v.period || '—',
+      unit: '',
+      judge: null,
+      desc: '最新財報年/季',
+      color: '#f59e0b',
+    },
+  ];
+
+  return (
+    <div style={{ padding: 16, overflowY: 'auto', height: '100%' }}>
+      {/* KPI 卡片 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 16 }}>
+        {cards.map((card, i) => (
+          <div key={i} style={{ background: '#161f2e', border: `1px solid ${card.color}25`, borderRadius: 8, padding: '14px 16px' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#475569', marginBottom: 6 }}>
+              {card.label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
+              <span style={{ fontSize: '1.8rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: card.color, lineHeight: 1 }}>
+                {card.value}
+              </span>
+              {card.unit && <span style={{ fontSize: 12, color: '#64748b' }}>{card.unit}</span>}
+            </div>
+            {card.judge && typeof card.judge === 'object' && (
+              <div style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 3, background: `${card.judge.color}18`, color: card.judge.color, marginBottom: 4 }}>
+                {card.judge.label}
+              </div>
+            )}
+            <div style={{ fontSize: 10, color: '#475569' }}>{card.desc}</div>
+            {card.judge?.tip && <div style={{ fontSize: 10, color: '#334155', marginTop: 2, fontStyle: 'italic' }}>{card.judge.tip}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* 說明區 */}
+      <div style={{ background: '#0d1520', borderRadius: 6, padding: '12px 14px', fontSize: 11, color: '#475569', lineHeight: 1.9 }}>
+        <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 6, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>資料說明</div>
+        <div>📊 資料來源：TWSE BWIBBU_d（每日盤後更新）</div>
+        <div>📅 財報週期：{v.period || '—'}（採用最新公告財報）</div>
+        <div>⚠️ 本益比 0 = 虧損股或 ETF，無法計算</div>
+        <div style={{ marginTop: 8, padding: '6px 10px', background: '#161f2e', borderRadius: 4, color: '#94a3b8' }}>
+          💡 本益比僅供參考，需結合產業特性、成長率（PEG）及市場環境綜合判斷
+        </div>
       </div>
     </div>
   );
