@@ -46,6 +46,16 @@ router.get('/breadth', async (req, res) => {
   }
 });
 
+// GET /api/market/institutional — 三大法人今日全市場買賣超排行
+router.get('/institutional', async (req, res) => {
+  try {
+    const data = await twse.fetchInstitutionalAll();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/market/status — 市場狀態
 router.get('/status', (req, res) => {
   const now = new Date();

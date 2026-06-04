@@ -22,7 +22,10 @@ export const api = {
 
   // 個股
   getQuotes: (codes) => apiFetch(`/api/stocks/${codes.join(',')}`),
-  getHistory: (code, months = 3) => apiFetch(`/api/stocks/${code}/history?months=${months}`),
+  getHistory:       (code, months = 3) => apiFetch(`/api/stocks/${code}/history?months=${months}`),
+  getInstitutional: (code, months = 3) => apiFetch(`/api/stocks/${code}/institutional?months=${months}`),
+  getMargin:        (code, months = 3) => apiFetch(`/api/stocks/${code}/margin?months=${months}`),
+  getMarketInstitutional: () => apiFetch('/api/market/institutional'),
 
   // 警報
   getAlerts: () => apiFetch('/api/alerts'),

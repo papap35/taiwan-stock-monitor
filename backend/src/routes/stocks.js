@@ -22,6 +22,30 @@ router.get('/:codes', async (req, res) => {
   }
 });
 
+// GET /api/stocks/:code/institutional?months=3 — 個股三大法人歷史
+router.get('/:code/institutional', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const months = Math.min(parseInt(req.query.months) || 3, 12);
+    const data = await twse.fetchInstitutionalStock(code, months);
+    res.json({ code, months, data, count: data.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stocks/:code/margin?months=3 — 個股融資融券歷史
+router.get('/:code/margin', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const months = Math.min(parseInt(req.query.months) || 3, 12);
+    const data = await twse.fetchMarginStock(code, months);
+    res.json({ code, months, data, count: data.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stocks/:code/history?months=3 — 個股日K歷史資料
 router.get('/:code/history', async (req, res) => {
   try {

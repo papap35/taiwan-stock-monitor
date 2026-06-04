@@ -269,6 +269,164 @@ async function fetchMarketBreadth() {
 }
 
 /**
+ * 取得今日三大法人全市場買賣超排行
+ */
+async function fetchInstitutionalAll() {
+  const cacheKey = 'inst_all';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const now = new Date();
+    const twNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const dateStr = `${twNow.getFullYear()}${String(twNow.getMonth() + 1).padStart(2, '0')}${String(twNow.getDate()).padStart(2, '0')}`;
+
+    const url = `https://www.twse.com.tw/fund/T86?response=json&date=${dateStr}&selectType=ALLBUT0999`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 12000 });
+    const data = await res.json();
+
+    if (data.stat !== 'OK' || !data.data) {
+      // 嘗試前一個交易日
+      return cache.get(cacheKey) || { date: dateStr, stocks: [] };
+    }
+
+    // 欄位：0=代號 1=名稱 2=外資買 3=外資賣 4=外資超 5=外資自營買 6=自營賣 7=自營超
+    //       8=投信買 9=投信賣 10=投信超 11=自營(自)超 12=自營(避)超 13=三大合計
+    const toN = s => parseInt(String(s).replace(/,/g, '')) || 0;
+    const stocks = data.data.map(row => ({
+      code:        row[0],
+      name:        row[1],
+      fiBuy:       toN(row[2]),
+      fiSell:      toN(row[3]),
+      fiNet:       toN(row[4]),  // 外資買賣超
+      itBuy:       toN(row[8]),
+      itSell:      toN(row[9]),
+      itNet:       toN(row[10]), // 投信買賣超
+      dealerNet:   toN(row[11]) + toN(row[12]), // 自營商合計
+      totalNet:    toN(row[13]), // 三大法人合計
+    })).filter(s => s.code && /^\d{4}$/.test(s.code));
+
+    const result = { date: dateStr, stocks };
+    cache.set(cacheKey, result, isTradingHours() ? 300 : 3600);
+    return result;
+  } catch (err) {
+    console.error('[TWSE] fetchInstitutionalAll error:', err.message);
+    return cache.get(cacheKey) || { date: '', stocks: [] };
+  }
+}
+
+/**
+ * 取得個股三大法人歷史（BFIAUU，以月為單位）
+ * @param {string} code 股票代號
+ * @param {number} months 月數
+ */
+async function fetchInstitutionalStock(code, months = 3) {
+  const cacheKey = `inst_${code}_${months}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = [];
+    const now = new Date();
+
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+      const url = `https://www.twse.com.tw/fund/BFIAUU?response=json&date=${dateStr}&stockNo=${code}`;
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+        const data = await res.json();
+        if (data.stat !== 'OK' || !data.data) continue;
+
+        // 欄位: 0=日期 3=外資淨 9=投信淨 14=自營淨 16=三大合計（千股）
+        for (const row of data.data) {
+          const parts = row[0].trim().split('/');
+          if (parts.length !== 3) continue;
+          const year = parseInt(parts[0]) + 1911;
+          const month = parts[1].padStart(2, '0');
+          const day = parts[2].padStart(2, '0');
+          const time = Math.floor(new Date(`${year}-${month}-${day}T00:00:00+08:00`).getTime() / 1000);
+          const toN = s => parseInt(String(s).replace(/,/g, '')) || 0;
+          results.push({
+            time,
+            fiNet:     toN(row[3]),
+            itNet:     toN(row[9]),
+            dealerNet: toN(row[14]),
+            totalNet:  toN(row[16]),
+          });
+        }
+      } catch (e) {
+        console.warn(`[TWSE] fetchInstitutionalStock ${code} ${dateStr}:`, e.message);
+      }
+    }
+
+    results.sort((a, b) => a.time - b.time);
+    cache.set(cacheKey, results, 3600);
+    return results;
+  } catch (err) {
+    console.error('[TWSE] fetchInstitutionalStock error:', err.message);
+    return [];
+  }
+}
+
+/**
+ * 取得個股融資融券歷史（MARGIN_PURCHASE_SHORT_SALE，以月為單位）
+ * @param {string} code 股票代號
+ * @param {number} months 月數
+ */
+async function fetchMarginStock(code, months = 3) {
+  const cacheKey = `margin_${code}_${months}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = [];
+    const now = new Date();
+
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+      const url = `https://www.twse.com.tw/exchangeReport/MARGIN_PURCHASE_SHORT_SALE?response=json&date=${dateStr}&stockNo=${code}`;
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+        const data = await res.json();
+        if (data.stat !== 'OK' || !data.data) continue;
+
+        // 欄位：0=日期 1=融資買進 2=融資賣出 3=現金償還 4=前日融資餘額 5=今日融資餘額
+        //       9=融券賣出 10=融券買進 11=現券償還 12=前日融券餘額 13=今日融券餘額
+        for (const row of data.data) {
+          const parts = row[0].trim().split('/');
+          if (parts.length !== 3) continue;
+          const year = parseInt(parts[0]) + 1911;
+          const month = parts[1].padStart(2, '0');
+          const day = parts[2].padStart(2, '0');
+          const time = Math.floor(new Date(`${year}-${month}-${day}T00:00:00+08:00`).getTime() / 1000);
+          const toN = s => parseInt(String(s).replace(/,/g, '')) || 0;
+          results.push({
+            time,
+            marginBal:  toN(row[5]),  // 融資餘額（張）
+            shortBal:   toN(row[13]), // 融券餘額（張）
+            marginBuy:  toN(row[1]),
+            marginSell: toN(row[2]),
+            shortSell:  toN(row[9]),
+            shortBuy:   toN(row[10]),
+          });
+        }
+      } catch (e) {
+        console.warn(`[TWSE] fetchMarginStock ${code} ${dateStr}:`, e.message);
+      }
+    }
+
+    results.sort((a, b) => a.time - b.time);
+    cache.set(cacheKey, results, 3600);
+    return results;
+  } catch (err) {
+    console.error('[TWSE] fetchMarginStock error:', err.message);
+    return [];
+  }
+}
+
+/**
  * 抓取個股歷史日K資料（TWSE STOCK_DAY，以月為單位）
  * @param {string} code - 股票代號，例如 '2330'
  * @param {number} months - 要抓幾個月，預設 3
@@ -340,6 +498,9 @@ module.exports = {
   fetchQuote,
   fetchMarketBreadth,
   fetchHistory,
+  fetchInstitutionalAll,
+  fetchInstitutionalStock,
+  fetchMarginStock,
   isTradingHours,
   POPULAR_STOCKS,
 };
