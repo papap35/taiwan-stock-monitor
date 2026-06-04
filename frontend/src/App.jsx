@@ -14,7 +14,7 @@ const TABS = [
   { id: 'market',   label: '大盤總覽', icon: '📈' },
   { id: 'hot',      label: '熱門股票', icon: '🔥' },
   { id: 'watch',    label: '自選股',   icon: '⭐' },
-  { id: 'chips',    label: '籌碼分析', icon: '◈' },
+  { id: 'chips',    label: '籌碼分析', icon: '🧩' },
   { id: 'alerts',   label: '警報設定', icon: '🔔' },
   { id: 'ai',       label: 'AI 分析',  icon: '🤖' },
   { id: 'settings', label: '系統設定', icon: '⚙️' },
