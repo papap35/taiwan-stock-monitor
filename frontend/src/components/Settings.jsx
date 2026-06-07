@@ -1,4 +1,5 @@
 import { useStockStore } from '../stores/stockStore';
+import DataManager from './DataManager';
 
 const Row = ({ label, desc, children }) => (
   <div style={{
@@ -88,6 +89,15 @@ export default function Settings() {
             </label>
           </Row>
         ))}
+      </div>
+
+      {/* 資料管理（跨欄）*/}
+      <div style={{ gridColumn: '1 / -1' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          資料管理
+          <span style={{ flex: 1, height: 1, background: 'var(--color-border-tertiary)', display: 'block' }} />
+        </div>
+        <DataManager />
       </div>
 
       {/* 系統狀態 */}
