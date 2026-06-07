@@ -89,6 +89,35 @@ export const useStockStore = create((set, get) => ({
     return { watchlist: newList };
   }),
 
+  // ── Lot（買入記錄）管理 ────────────────────────────
+  addLot: (code, lot) => set((s) => {
+    const updated = s.watchlist.map(w => {
+      if (w.code !== code) return w;
+      const lots = w.lots ?? [];
+      return { ...w, lots: [...lots, { id: `lot_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, ...lot }] };
+    });
+    ls.set('watchlist', updated);
+    return { watchlist: updated };
+  }),
+
+  updateLot: (code, lotId, patch) => set((s) => {
+    const updated = s.watchlist.map(w => {
+      if (w.code !== code) return w;
+      return { ...w, lots: (w.lots ?? []).map(l => l.id === lotId ? { ...l, ...patch } : l) };
+    });
+    ls.set('watchlist', updated);
+    return { watchlist: updated };
+  }),
+
+  removeLot: (code, lotId) => set((s) => {
+    const updated = s.watchlist.map(w => {
+      if (w.code !== code) return w;
+      return { ...w, lots: (w.lots ?? []).filter(l => l.id !== lotId) };
+    });
+    ls.set('watchlist', updated);
+    return { watchlist: updated };
+  }),
+
   // ── 警報（localStorage 持久化）──────────────────────
   // 初始從 localStorage 載入，同時也會從後端同步覆寫
   alerts: ls.get('alerts_local', []),
