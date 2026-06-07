@@ -38,6 +38,11 @@ export const useStockStore = create((set, get) => ({
     localStorage.setItem('watchlist', JSON.stringify(updated));
     return { watchlist: updated };
   }),
+  updateWatchlistItem: (code, patch) => set((s) => {
+    const updated = s.watchlist.map(w => w.code === code ? { ...w, ...patch } : w);
+    localStorage.setItem('watchlist', JSON.stringify(updated));
+    return { watchlist: updated };
+  }),
 
   // 警報
   alerts: [],

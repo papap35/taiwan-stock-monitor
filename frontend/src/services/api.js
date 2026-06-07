@@ -37,6 +37,9 @@ export const api = {
   clearTriggered: () => apiFetch('/api/alerts/triggered/clear', { method: 'DELETE' }),
 
   // AI 分析（SSE streaming）
+  analyzePortfolio: (holdings, type, onChunk, onDone) => {
+    return fetchSSE('/api/ai/portfolio', { holdings, type }, onChunk, onDone);
+  },
   analyzeStock: (code, name, analysisType, onChunk, onDone) => {
     return fetchSSE('/api/ai/analyze', { code, name, analysisType }, onChunk, onDone);
   },

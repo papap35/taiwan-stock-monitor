@@ -149,4 +149,178 @@ ${marketData}
   }
 });
 
+// POST /api/ai/portfolio — 投資組合每日簡報（開盤前 / 收盤後）
+router.post('/portfolio', async (req, res) => {
+  const { holdings = [], type = 'open' } = req.body;
+  if (!holdings.length) return res.status(400).json({ error: '持股清單為空' });
+
+  initSSE(res);
+
+  try {
+    // 並行抓取所有需要的市場資料
+    const codes = [...new Set(holdings.map(h => h.code))];
+    const [quotesRes, taiexRes, breadthRes, valuationRes] = await Promise.allSettled([
+      twse.fetchRealtimeQuotes(codes),
+      twse.fetchTaiex(),
+      twse.fetchMarketBreadth(),
+      twse.fetchValuation(),
+    ]);
+
+    const quotes     = quotesRes.status     === 'fulfilled' ? quotesRes.value     : {};
+    const taiex      = taiexRes.status      === 'fulfilled' ? taiexRes.value      : null;
+    const breadth    = breadthRes.status    === 'fulfilled' ? breadthRes.value    : null;
+    const valuation  = valuationRes.status  === 'fulfilled' ? valuationRes.value  : {};
+
+    // ── 大盤摘要文字 ──────────────────────────────
+    const now = new Date();
+    const twTime = now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+    let marketCtx = `報告時間：${twTime}\n`;
+
+    if (taiex) {
+      const dir = taiex.changePercent > 0 ? '上漲' : taiex.changePercent < 0 ? '下跌' : '平盤';
+      marketCtx += `加權指數：${taiex.value?.toLocaleString()} 點，${dir} ${Math.abs(taiex.changePercent)}%（${taiex.change >= 0 ? '+' : ''}${taiex.change} 點）\n`;
+      marketCtx += `今日開盤：${taiex.open?.toLocaleString()}，最高：${taiex.high?.toLocaleString()}，最低：${taiex.low?.toLocaleString()}\n`;
+    }
+    if (breadth) {
+      const total = breadth.up + breadth.down + breadth.flat;
+      const upPct = total ? (breadth.up / total * 100).toFixed(0) : 0;
+      marketCtx += `市場廣度：上漲 ${breadth.up} 家（${upPct}%），下跌 ${breadth.down} 家，平盤 ${breadth.flat} 家\n`;
+      const mood = breadth.up > breadth.down * 1.5 ? '多方強勢'
+        : breadth.down > breadth.up * 1.5 ? '空方主導'
+        : '多空拉鋸';
+      marketCtx += `市場氣氛：${mood}\n`;
+    }
+
+    // ── 逐一建構每檔持股的分析素材 ───────────────
+    const strategyLabel = { swing: '波段操作', long: '長期持有', trade: '短線交易' };
+
+    const holdingsCtx = holdings.map((h, idx) => {
+      const q = quotes[h.code];
+      const v = valuation[h.code];
+
+      const price    = q?.price ?? 0;
+      const prevClose = q?.prevClose ?? 0;
+      const cost     = parseFloat(h.cost) || 0;
+      const shares   = parseInt(h.shares) || 0;
+      const pnlPct   = cost && price ? +((price / cost - 1) * 100).toFixed(2) : null;
+      const pnlAmt   = shares && cost && price ? Math.round((price - cost) * shares * 1000) : null;
+      const mktVal   = shares && price ? Math.round(price * shares * 1000) : null;
+      const strategy = strategyLabel[h.strategy] || h.strategy || '未設定';
+
+      let block = `\n── ${idx + 1}. ${h.name}（${h.code}）──\n`;
+
+      // 現價與損益
+      if (price) {
+        block += `現價：${price} 元`;
+        if (q?.changePercent !== undefined) {
+          const dir = q.changePercent > 0 ? '▲' : q.changePercent < 0 ? '▼' : '—';
+          block += `（今日 ${dir}${Math.abs(q.changePercent)}%）`;
+        }
+        block += '\n';
+      }
+
+      if (cost) block += `持有成本：${cost} 元 × ${shares} 張`;
+      if (mktVal) block += `，市值約 ${mktVal.toLocaleString()} 元`;
+      block += '\n';
+
+      if (pnlPct !== null) {
+        const pnlDir = pnlPct >= 0 ? '獲利' : '虧損';
+        block += `持股損益：${pnlDir} ${Math.abs(pnlPct)}%`;
+        if (pnlAmt !== null) block += `（${pnlAmt >= 0 ? '+' : ''}${pnlAmt.toLocaleString()} 元）`;
+        block += '\n';
+      }
+
+      block += `操作策略：${strategy}\n`;
+      if (h.target)   block += `目標價：${h.target} 元（距現價 ${price ? ((h.target / price - 1) * 100).toFixed(1) : '?'}%）\n`;
+      if (h.stopLoss) block += `停損價：${h.stopLoss} 元（距現價 ${price ? ((h.stopLoss / price - 1) * 100).toFixed(1) : '?'}%）\n`;
+
+      // 今日盤中資訊
+      if (q?.high && q?.low) {
+        block += `今日區間：${q.low}~${q.high} 元\n`;
+        if (price && q.high !== q.low) {
+          const pos = ((price - q.low) / (q.high - q.low) * 100).toFixed(0);
+          block += `現價位於今日區間第 ${pos}% 位置\n`;
+        }
+      }
+
+      // 基本面
+      if (v?.pe)    block += `本益比：${v.pe} 倍（${v.pe < 15 ? '偏低' : v.pe > 30 ? '偏高' : '正常'}）\n`;
+      if (v?.yield) block += `殖利率：${v.yield}%（${v.yield >= 5 ? '高殖利率' : v.yield >= 3 ? '中等' : '偏低'}）\n`;
+      if (v?.pb)    block += `股價淨值比：${v.pb} 倍\n`;
+      if (v?.period) block += `財報：${v.period}\n`;
+
+      if (h.notes) block += `備註：${h.notes}\n`;
+
+      return block;
+    }).join('');
+
+    // ── 計算整體持倉狀況 ─────────────────────────
+    let portfolioSummary = '';
+    const withCost = holdings.filter(h => h.cost && h.shares && quotes[h.code]?.price);
+    if (withCost.length) {
+      const totalCost = withCost.reduce((s, h) => s + h.cost * h.shares * 1000, 0);
+      const totalMkt  = withCost.reduce((s, h) => s + (quotes[h.code].price) * h.shares * 1000, 0);
+      const totalPnlPct = +((totalMkt / totalCost - 1) * 100).toFixed(2);
+      portfolioSummary = `\n── 整體持倉摘要 ──\n總成本：${totalCost.toLocaleString()} 元\n目前市值：${totalMkt.toLocaleString()} 元\n整體損益：${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct}%（${(totalMkt - totalCost) >= 0 ? '+' : ''}${(totalMkt - totalCost).toLocaleString()} 元）\n`;
+    }
+
+    // ── 根據報告類型決定 Prompt ─────────────────
+    const reportType = type === 'close'
+      ? `【收盤後持倉檢討與明日策略】`
+      : `【開盤前操作策略建議】`;
+
+    const typeInstruction = type === 'close'
+      ? `請針對今日收盤結果：
+1. 逐一檢討每檔持股今日表現，說明盤中發生了什麼
+2. 判斷各股明日走勢預期
+3. 是否需要調整停損或停利設定
+4. 明日開盤前的應對方案（是否要設定掛單）
+5. 整體倉位建議：是否需要調整持股比重或資金配置`
+      : `請針對今日盤前：
+1. 逐一說明每檔持股今日的觀察重點（支撐/壓力位、成交量、籌碼）
+2. 提出具體的操作預案：若開盤上漲/下跌時的應對
+3. 今日是否有加碼或減碼的機會
+4. 需要特別注意的風險（個股或總體）
+5. 整體盤勢對持股的影響分析`;
+
+    const prompt = `你是一位幫助投資人管理台股持倉的專業分析師。
+
+${reportType}
+
+═══════════════════════════════
+【當前市場狀況】
+${marketCtx}
+═══════════════════════════════
+【投資人持股】
+${holdingsCtx}${portfolioSummary}
+═══════════════════════════════
+
+${typeInstruction}
+
+最後請給出一句今日最重要的操作重點（一句話結論）。
+
+⚠️ 以上分析僅供參考，不構成投資建議，請自行承擔投資風險。`;
+
+    const stream = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        writeChunk(res, chunk.delta.text);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    console.error('[AI] /portfolio error:', err.message, err.status ?? '');
+    writeError(res, `持倉分析失敗：${err.message}`);
+  }
+});
+
 module.exports = router;
