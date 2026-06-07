@@ -44,15 +44,19 @@ export default function DataManager() {
 
   // ── 匯出 CSV（持股清單）─────────────────────────
   const exportCSV = () => {
-    const headers = ['代號', '名稱', '持有張數', '平均成本', '策略', '目標價', '停損價', '備註'];
+    const headers = ['代號', '名稱', '整張數(張)', '零股數(股)', '總股數(股)', '平均成本', '策略', '目標價', '停損價', '備註'];
     const stratMap = { long: '長期持有', swing: '波段操作', trade: '短線交易' };
-    const rows = watchlist.map(w => [
-      w.code, w.name,
-      w.shares ?? '', w.cost ?? '',
-      stratMap[w.strategy] ?? w.strategy ?? '',
-      w.target ?? '', w.stopLoss ?? '',
-      w.notes ?? '',
-    ]);
+    const rows = watchlist.map(w => {
+      const total = (parseInt(w.shares) || 0) * 1000 + (parseInt(w.oddLotShares) || 0);
+      return [
+        w.code, w.name,
+        w.shares ?? '', w.oddLotShares ?? '', total || '',
+        w.cost ?? '',
+        stratMap[w.strategy] ?? w.strategy ?? '',
+        w.target ?? '', w.stopLoss ?? '',
+        w.notes ?? '',
+      ];
+    });
     const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM for Excel
     const url  = URL.createObjectURL(blob);

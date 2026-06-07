@@ -200,11 +200,12 @@ router.post('/portfolio', async (req, res) => {
 
       const price    = q?.price ?? 0;
       const prevClose = q?.prevClose ?? 0;
-      const cost     = parseFloat(h.cost) || 0;
-      const shares   = parseInt(h.shares) || 0;
+      const cost       = parseFloat(h.cost) || 0;
+      // 總股數 = 整張 × 1000 + 零股
+      const totalShares = (parseInt(h.shares) || 0) * 1000 + (parseInt(h.oddLotShares) || 0);
       const pnlPct   = cost && price ? +((price / cost - 1) * 100).toFixed(2) : null;
-      const pnlAmt   = shares && cost && price ? Math.round((price - cost) * shares * 1000) : null;
-      const mktVal   = shares && price ? Math.round(price * shares * 1000) : null;
+      const pnlAmt   = totalShares && cost && price ? Math.round((price - cost) * totalShares) : null;
+      const mktVal   = totalShares && price ? Math.round(price * totalShares) : null;
       const strategy = strategyLabel[h.strategy] || h.strategy || '未設定';
 
       let block = `\n── ${idx + 1}. ${h.name}（${h.code}）──\n`;
@@ -219,7 +220,14 @@ router.post('/portfolio', async (req, res) => {
         block += '\n';
       }
 
-      if (cost) block += `持有成本：${cost} 元 × ${shares} 張`;
+      if (cost && totalShares) {
+        const lotsLabel = h.shares    ? `${h.shares}張`    : '';
+        const oddLabel  = h.oddLotShares ? `${h.oddLotShares}股` : '';
+        const holdLabel = [lotsLabel, oddLabel].filter(Boolean).join('+') || `${totalShares}股`;
+        block += `持有：${holdLabel}（${totalShares.toLocaleString()}股），成本 ${cost} 元`;
+      } else if (cost) {
+        block += `持有成本：${cost} 元`;
+      }
       if (mktVal) block += `，市值約 ${mktVal.toLocaleString()} 元`;
       block += '\n';
 
@@ -256,10 +264,11 @@ router.post('/portfolio', async (req, res) => {
 
     // ── 計算整體持倉狀況 ─────────────────────────
     let portfolioSummary = '';
-    const withCost = holdings.filter(h => h.cost && h.shares && quotes[h.code]?.price);
+    const totalSharesFn = h => (parseInt(h.shares) || 0) * 1000 + (parseInt(h.oddLotShares) || 0);
+    const withCost = holdings.filter(h => h.cost && totalSharesFn(h) > 0 && quotes[h.code]?.price);
     if (withCost.length) {
-      const totalCost = withCost.reduce((s, h) => s + h.cost * h.shares * 1000, 0);
-      const totalMkt  = withCost.reduce((s, h) => s + (quotes[h.code].price) * h.shares * 1000, 0);
+      const totalCost = withCost.reduce((s, h) => s + h.cost * totalSharesFn(h), 0);
+      const totalMkt  = withCost.reduce((s, h) => s + quotes[h.code].price * totalSharesFn(h), 0);
       const totalPnlPct = +((totalMkt / totalCost - 1) * 100).toFixed(2);
       portfolioSummary = `\n── 整體持倉摘要 ──\n總成本：${totalCost.toLocaleString()} 元\n目前市值：${totalMkt.toLocaleString()} 元\n整體損益：${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct}%（${(totalMkt - totalCost) >= 0 ? '+' : ''}${(totalMkt - totalCost).toLocaleString()} 元）\n`;
     }

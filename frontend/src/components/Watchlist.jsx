@@ -40,22 +40,40 @@ function MdText({ text }) {
   );
 }
 
+// ── 持股格式化（張 + 零股）────────────────────────────
+function formatHolding(shares, oddLot) {
+  const lots = parseInt(shares) || 0;
+  const odd  = parseInt(oddLot)  || 0;
+  if (!lots && !odd) return '—';
+  if (lots && odd)  return `${lots}張 ${odd}股`;
+  if (lots)         return `${lots}張`;
+  return `${odd}股`;
+}
+
+// 總股數（股）
+function totalStockShares(shares, oddLot) {
+  return (parseInt(shares) || 0) * 1000 + (parseInt(oddLot) || 0);
+}
+
 // ── 編輯 Modal ────────────────────────────────────────
 function EditModal({ item, onSave, onClose }) {
   const [form, setForm] = useState({
-    shares:   item.shares   ?? '',
-    cost:     item.cost     ?? '',
-    strategy: item.strategy ?? 'long',
-    target:   item.target   ?? '',
-    stopLoss: item.stopLoss ?? '',
-    notes:    item.notes    ?? '',
+    shares:      item.shares      ?? '',
+    oddLotShares: item.oddLotShares ?? '',
+    cost:        item.cost        ?? '',
+    strategy:    item.strategy    ?? 'long',
+    target:      item.target      ?? '',
+    stopLoss:    item.stopLoss    ?? '',
+    notes:       item.notes       ?? '',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const inp = { padding: '6px 10px', border: '1px solid var(--color-border-secondary)', borderRadius: 6, background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, width: '100%' };
 
+  const totalDisplay = totalStockShares(form.shares, form.oddLotShares);
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f1923', border: '1px solid var(--color-border-secondary)', borderRadius: 10, width: '100%', maxWidth: 420, padding: 20 }} className="fade-in">
+      <div style={{ background: '#0f1923', border: '1px solid var(--color-border-secondary)', borderRadius: 10, width: '100%', maxWidth: 440, padding: 20 }} className="fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15 }}>{item.name}</div>
@@ -65,15 +83,29 @@ function EditModal({ item, onSave, onClose }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>持有張數</div>
-              <input style={inp} type="number" min="0" placeholder="0" value={form.shares} onChange={e => f('shares', e.target.value)} />
+          {/* 持股數量 */}
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>持有數量</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>整張（張）</div>
+                <input style={inp} type="number" min="0" step="1" placeholder="0" value={form.shares} onChange={e => f('shares', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>零股（股）</div>
+                <input style={inp} type="number" min="0" step="1" placeholder="0" value={form.oddLotShares} onChange={e => f('oddLotShares', e.target.value)} />
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>平均成本（元）</div>
-              <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.cost} onChange={e => f('cost', e.target.value)} />
-            </div>
+            {totalDisplay > 0 && (
+              <div style={{ marginTop: 5, fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                合計 <span style={{ color: 'var(--color-brand)', fontWeight: 700 }}>{totalDisplay.toLocaleString()} 股</span>
+                {form.shares > 0 && form.oddLotShares > 0 && ` （${form.shares}張 + ${form.oddLotShares}股）`}
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>平均成本（元/股）</div>
+            <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.cost} onChange={e => f('cost', e.target.value)} />
           </div>
 
           <div>
@@ -110,7 +142,14 @@ function EditModal({ item, onSave, onClose }) {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid var(--color-border-secondary)', borderRadius: 6, color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 13 }}>取消</button>
-          <button onClick={() => onSave({ ...form, shares: form.shares ? parseInt(form.shares) : null, cost: form.cost ? parseFloat(form.cost) : null, target: form.target ? parseFloat(form.target) : null, stopLoss: form.stopLoss ? parseFloat(form.stopLoss) : null })}
+          <button onClick={() => onSave({
+              ...form,
+              shares:       form.shares       ? parseInt(form.shares)       : null,
+              oddLotShares: form.oddLotShares ? parseInt(form.oddLotShares) : null,
+              cost:         form.cost         ? parseFloat(form.cost)       : null,
+              target:       form.target       ? parseFloat(form.target)     : null,
+              stopLoss:     form.stopLoss     ? parseFloat(form.stopLoss)   : null,
+            })}
             style={{ flex: 1, padding: '8px', background: 'var(--color-brand)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
             儲存
           </button>
@@ -123,7 +162,7 @@ function EditModal({ item, onSave, onClose }) {
 // ── 主元件 ────────────────────────────────────────────
 export default function Watchlist() {
   const { watchlist, quotes, addToWatchlist, removeFromWatchlist, updateWatchlistItem } = useStockStore();
-  const [form, setForm] = useState({ code: '', name: '', cost: '', shares: '', strategy: 'long' });
+  const [form, setForm] = useState({ code: '', name: '', cost: '', shares: '', oddLotShares: '', strategy: 'long' });
   const [adding, setAdding] = useState(false);
   const [chartStock, setChartStock] = useState(null);
   const [editItem, setEditItem] = useState(null);
@@ -148,11 +187,12 @@ export default function Watchlist() {
     }
     addToWatchlist({
       code: form.code.trim().toUpperCase(), name,
-      cost:     form.cost     ? parseFloat(form.cost)     : null,
-      shares:   form.shares   ? parseInt(form.shares)     : null,
-      strategy: form.strategy || 'long',
+      cost:         form.cost         ? parseFloat(form.cost)         : null,
+      shares:       form.shares       ? parseInt(form.shares)         : null,
+      oddLotShares: form.oddLotShares ? parseInt(form.oddLotShares)  : null,
+      strategy:     form.strategy || 'long',
     });
-    setForm({ code: '', name: '', cost: '', shares: '', strategy: 'long' });
+    setForm({ code: '', name: '', cost: '', shares: '', oddLotShares: '', strategy: 'long' });
     setAdding(false);
   };
 
@@ -163,13 +203,15 @@ export default function Watchlist() {
     setBriefText('');
     try {
       const holdings = watchlist.map(w => ({
-        code: w.code, name: w.name,
-        shares:   w.shares   ?? null,
-        cost:     w.cost     ?? null,
-        strategy: w.strategy ?? 'long',
-        target:   w.target   ?? null,
-        stopLoss: w.stopLoss ?? null,
-        notes:    w.notes    ?? '',
+        code:         w.code,
+        name:         w.name,
+        shares:       w.shares       ?? null,
+        oddLotShares: w.oddLotShares ?? null,
+        cost:         w.cost         ?? null,
+        strategy:     w.strategy     ?? 'long',
+        target:       w.target       ?? null,
+        stopLoss:     w.stopLoss     ?? null,
+        notes:        w.notes        ?? '',
       }));
       await api.analyzePortfolio(
         holdings, briefType,
@@ -189,12 +231,13 @@ export default function Watchlist() {
   const portfolio = watchlist.map(w => {
     const q = quotes[w.code];
     const price = q?.price ?? 0;
+    const totalShares = totalStockShares(w.shares, w.oddLotShares); // 總股數
     const pnlPct = w.cost && price ? +((price / w.cost - 1) * 100).toFixed(2) : null;
-    const pnlAmt = w.shares && w.cost && price ? Math.round((price - w.cost) * w.shares * 1000) : null;
-    const mktVal = w.shares && price ? Math.round(price * w.shares * 1000) : null;
-    return { ...w, q, price, pnlPct, pnlAmt, mktVal };
+    const pnlAmt = totalShares && w.cost && price ? Math.round((price - w.cost) * totalShares) : null;
+    const mktVal = totalShares && price ? Math.round(price * totalShares) : null;
+    return { ...w, q, price, pnlPct, pnlAmt, mktVal, totalShares };
   });
-  const totalCost = portfolio.filter(p => p.shares && p.cost).reduce((s, p) => s + p.cost * p.shares * 1000, 0);
+  const totalCost = portfolio.filter(p => p.totalShares && p.cost).reduce((s, p) => s + p.cost * p.totalShares, 0);
   const totalMkt  = portfolio.filter(p => p.mktVal).reduce((s, p) => s + p.mktVal, 0);
   const totalPnlPct = totalCost ? +((totalMkt / totalCost - 1) * 100).toFixed(2) : null;
   const totalPnlAmt = totalCost ? Math.round(totalMkt - totalCost) : null;
@@ -254,8 +297,9 @@ export default function Watchlist() {
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--color-border-tertiary)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: 'var(--color-background-secondary)' }}>
             <input style={{ ...inp, width: 80 }} placeholder="代號" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} onKeyDown={e => e.key === 'Enter' && add()} />
             <input style={{ ...inp, minWidth: 100, flex: 1 }} placeholder="名稱（可自動查詢）" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
-            <input style={{ ...inp, width: 80 }} type="number" placeholder="成本" value={form.cost} onChange={e => setForm(p => ({ ...p, cost: e.target.value }))} />
-            <input style={{ ...inp, width: 70 }} type="number" placeholder="張數" value={form.shares} onChange={e => setForm(p => ({ ...p, shares: e.target.value }))} />
+            <input style={{ ...inp, width: 80 }} type="number" step="0.01" placeholder="成本" value={form.cost} onChange={e => setForm(p => ({ ...p, cost: e.target.value }))} />
+            <input style={{ ...inp, width: 60 }} type="number" min="0" step="1" placeholder="張" value={form.shares} onChange={e => setForm(p => ({ ...p, shares: e.target.value }))} />
+            <input style={{ ...inp, width: 68 }} type="number" min="0" step="1" placeholder="零股(股)" value={form.oddLotShares} onChange={e => setForm(p => ({ ...p, oddLotShares: e.target.value }))} />
             <select style={{ ...inp, width: 100 }} value={form.strategy} onChange={e => setForm(p => ({ ...p, strategy: e.target.value }))}>
               {STRATEGIES.map(s => <option key={s.value} value={s.value}>{s.icon} {s.label}</option>)}
             </select>
@@ -275,13 +319,13 @@ export default function Watchlist() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--color-background-secondary)' }}>
-                  {['名稱 / 代號', '現價', '漲跌幅', '張數', '成本', '損益 %', '損益 元', '策略', 'P/E', '目標/停損', ''].map((h, i) => (
+                  {['名稱 / 代號', '現價', '漲跌幅', '持有', '成本', '損益 %', '損益 元', '策略', 'P/E', '目標/停損', ''].map((h, i) => (
                     <th key={i} style={{ padding: '6px 8px', fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)', textAlign: i === 0 ? 'left' : 'right', borderBottom: '1px solid var(--color-border-tertiary)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {portfolio.map(({ code, name, q, price, pnlPct, pnlAmt, mktVal, shares, cost, strategy, target, stopLoss, notes }) => {
+                {portfolio.map(({ code, name, q, price, pnlPct, pnlAmt, mktVal, shares, oddLotShares, totalShares, cost, strategy, target, stopLoss, notes }) => {
                   const up = q && q.changePercent > 0, flat = q && q.changePercent === 0;
                   const qColor = !q ? '#64748b' : flat ? '#64748b' : up ? '#ff4d4f' : '#00c48c';
                   const pColor = pnlPct === null ? '#64748b' : pnlPct >= 0 ? '#ff4d4f' : '#00c48c';
@@ -310,8 +354,19 @@ export default function Watchlist() {
                           </span>
                         ) : <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>—</span>}
                       </td>
-                      <td style={{ padding: '8px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                        {shares ?? <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                      <td style={{ padding: '8px 8px', textAlign: 'right', fontSize: 11 }}>
+                        {totalShares > 0 ? (
+                          <div>
+                            <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>
+                              {formatHolding(shares, oddLotShares)}
+                            </div>
+                            {totalShares > 0 && (
+                              <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                                {totalShares.toLocaleString()} 股
+                              </div>
+                            )}
+                          </div>
+                        ) : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
                       </td>
                       <td style={{ padding: '8px 8px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
                         {cost ?? <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
@@ -343,7 +398,7 @@ export default function Watchlist() {
                             onMouseLeave={e => { e.target.style.borderColor = 'var(--color-border-secondary)'; e.target.style.color = 'var(--color-text-tertiary)'; }}>
                             K線
                           </button>
-                          <button onClick={() => setEditItem({ code, name, cost, shares, strategy, target, stopLoss, notes })}
+                          <button onClick={() => setEditItem({ code, name, cost, shares, oddLotShares, strategy, target, stopLoss, notes })}
                             style={{ padding: '2px 6px', borderRadius: 3, fontSize: 10, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-tertiary)', cursor: 'pointer' }}
                             onMouseEnter={e => { e.target.style.borderColor = '#f59e0b'; e.target.style.color = '#f59e0b'; }}
                             onMouseLeave={e => { e.target.style.borderColor = 'var(--color-border-secondary)'; e.target.style.color = 'var(--color-text-tertiary)'; }}>
