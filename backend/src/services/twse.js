@@ -245,7 +245,7 @@ async function fetchQuote(code) {
 }
 
 /**
- * 取得市場廣度（漲/跌/平 家數估算）
+ * 取得市場廣度（漲/跌/平/漲停/跌停 家數）
  */
 async function fetchMarketBreadth() {
   const cacheKey = 'breadth';
@@ -254,17 +254,19 @@ async function fetchMarketBreadth() {
 
   try {
     const daily = await fetchDailyAll();
-    let up = 0, down = 0, flat = 0;
+    let up = 0, down = 0, flat = 0, limitUp = 0, limitDown = 0;
     Object.values(daily).forEach(s => {
-      if (s.changePercent > 0.05) up++;
+      if (s.changePercent >= 9.9)       { limitUp++; up++; }
+      else if (s.changePercent > 0.05)  up++;
+      else if (s.changePercent <= -9.9) { limitDown++; down++; }
       else if (s.changePercent < -0.05) down++;
       else flat++;
     });
-    const result = { up, down, flat, total: up + down + flat };
+    const result = { up, down, flat, limitUp, limitDown, total: up + down + flat };
     cache.set(cacheKey, result, 60);
     return result;
   } catch (err) {
-    return { up: 0, down: 0, flat: 0, total: 0 };
+    return { up: 0, down: 0, flat: 0, limitUp: 0, limitDown: 0, total: 0 };
   }
 }
 
@@ -585,6 +587,60 @@ async function fetchHistory(code, months = 3) {
   }
 }
 
+/**
+ * 抓取國際主要指數（Yahoo Finance 免費 API）
+ * 含美股三大指數、日經、恆生、韓股、美元/台幣、WTI 原油
+ */
+async function fetchWorldMarkets() {
+  const cacheKey = 'world_markets';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const SYMBOLS = [
+    { symbol: '^GSPC',    name: 'S&P 500',    region: 'US',  type: 'index' },
+    { symbol: '^DJI',     name: 'DJIA',        region: 'US',  type: 'index' },
+    { symbol: '^IXIC',    name: 'NASDAQ',      region: 'US',  type: 'index' },
+    { symbol: '^N225',    name: '日經 225',    region: 'JP',  type: 'index' },
+    { symbol: '^HSI',     name: '恆生指數',    region: 'HK',  type: 'index' },
+    { symbol: '^KS11',    name: 'KOSPI',       region: 'KR',  type: 'index' },
+    { symbol: 'USDTWD=X', name: '美元/台幣',   region: 'FX',  type: 'fx' },
+    { symbol: 'CL=F',     name: 'WTI 原油',    region: 'CM',  type: 'commodity' },
+    { symbol: 'GC=F',     name: '黃金',        region: 'CM',  type: 'commodity' },
+  ];
+
+  const results = await Promise.allSettled(
+    SYMBOLS.map(async (s) => {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.symbol)}?interval=1d&range=2d`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible)', 'Accept': 'application/json' },
+        timeout: 8000,
+      });
+      const json = await res.json();
+      const meta = json.chart?.result?.[0]?.meta;
+      if (!meta) throw new Error('no data');
+      const price = meta.regularMarketPrice ?? 0;
+      const prev  = meta.chartPreviousClose ?? meta.previousClose ?? price;
+      const chg   = price - prev;
+      const chgPct = prev ? (chg / prev * 100) : 0;
+      return {
+        ...s,
+        price:         +price.toFixed(s.type === 'fx' ? 3 : 2),
+        prevClose:     +prev.toFixed(2),
+        change:        +chg.toFixed(2),
+        changePercent: +chgPct.toFixed(2),
+        marketState:   meta.marketState || 'CLOSED',
+      };
+    })
+  );
+
+  const data = results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
+
+  cache.set(cacheKey, data, isTradingHours() ? 120 : 600);
+  return data;
+}
+
 module.exports = {
   fetchTaiex,
   fetchRealtimeQuotes,
@@ -600,6 +656,7 @@ module.exports = {
   fetchInstitutionalAll,
   fetchInstitutionalStock,
   fetchMarginStock,
+  fetchWorldMarkets,
   isTradingHours,
   POPULAR_STOCKS,
 };

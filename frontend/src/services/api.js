@@ -28,6 +28,7 @@ export const api = {
   getMarketInstitutional: () => apiFetch('/api/market/institutional'),
   getMarketValuation:     () => apiFetch('/api/market/valuation'),
   getMarketIntraday:      () => apiFetch('/api/market/intraday'),
+  getWorldMarkets:        () => apiFetch('/api/market/world'),
   getStockValuation: (code)   => apiFetch(`/api/stocks/${code}/valuation`),
 
   // 警報

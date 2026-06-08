@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useStockStore } from './stores/stockStore';
+import Dashboard from './components/Dashboard';
 import Market from './components/Market';
 import HotStocks from './components/HotStocks';
 import Watchlist from './components/Watchlist';
@@ -11,6 +12,7 @@ import MarketTicker from './components/MarketTicker';
 import Chips from './components/Chips';
 
 const TABS = [
+  { id: 'home',     label: '首頁',     icon: '🏠' },
   { id: 'market',   label: '大盤總覽', icon: '📈' },
   { id: 'hot',      label: '熱門股票', icon: '🔥' },
   { id: 'watch',    label: '自選股',   icon: '⭐' },
@@ -24,7 +26,7 @@ const WS_LABEL = { connected: '連線中', connecting: '連線中...', disconnec
 const WS_COLOR = { connected: '#00c48c', connecting: '#f59e0b', disconnected: '#64748b' };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('market');
+  const [activeTab, setActiveTab] = useState('home');
   const { wsStatus, lastUpdated, taiex, alerts, triggerHistory } = useStockStore();
   useWebSocket();
 
@@ -196,6 +198,7 @@ export default function App() {
         margin: '0 auto',
         alignSelf: 'stretch',
       }} className="fade-in" key={activeTab}>
+        {activeTab === 'home'     && <Dashboard />}
         {activeTab === 'market'   && <Market />}
         {activeTab === 'hot'      && <HotStocks />}
         {activeTab === 'watch'    && <Watchlist />}

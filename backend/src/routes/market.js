@@ -76,6 +76,16 @@ router.get('/institutional', async (req, res) => {
   }
 });
 
+// GET /api/market/world — 國際主要指數
+router.get('/world', async (req, res) => {
+  try {
+    const data = await twse.fetchWorldMarkets();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/market/status — 市場狀態
 router.get('/status', (req, res) => {
   const now = new Date();
