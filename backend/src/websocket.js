@@ -18,30 +18,41 @@ function broadcast(type, payload) {
 }
 
 /**
- * 主要抓取任務：抓取大盤 + 熱門股 → 推播給所有 client
+ * 收集所有已連線 client 訂閱的股票代號
+ */
+function collectSubscribedCodes() {
+  const codes = new Set();
+  if (!wss) return codes;
+  wss.clients.forEach(client => {
+    if (Array.isArray(client._subscribedCodes)) {
+      client._subscribedCodes.forEach(c => codes.add(c));
+    }
+  });
+  return codes;
+}
+
+/**
+ * 主要抓取任務：大盤 + 熱門股 + 所有 client 自選股 → 推播
  */
 async function fetchAndBroadcast() {
   try {
-    const [taiex, hot] = await Promise.all([
+    // 合併 POPULAR_STOCKS + 所有 client 訂閱的自選股代號
+    const extraCodes = collectSubscribedCodes();
+    const allCodes = [...new Set([...twse.POPULAR_STOCKS, ...extraCodes])];
+
+    const [taiex, realtimeQuotes] = await Promise.all([
       twse.fetchTaiex(),
-      twse.fetchHotStocks(30),
+      twse.fetchRealtimeQuotes(allCodes),
     ]);
 
-    latestTaiex = taiex;
+    latestTaiex  = taiex;
+    latestQuotes = realtimeQuotes;
 
-    // 將熱門股轉為 map 供警報引擎使用
-    const quotesMap = {};
-    hot.forEach(s => { quotesMap[s.code] = s; });
-    latestQuotes = quotesMap;
-
-    // 推播大盤
     if (taiex) broadcast('taiex', taiex);
-
-    // 推播個股報價
-    broadcast('quotes', quotesMap);
+    broadcast('quotes', realtimeQuotes);
 
     // 檢查警報
-    const triggered = alertEngine.checkQuotes(quotesMap);
+    const triggered = alertEngine.checkQuotes(realtimeQuotes);
     if (triggered.length > 0) {
       broadcast('alerts_triggered', triggered);
     }

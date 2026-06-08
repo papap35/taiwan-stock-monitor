@@ -240,6 +240,33 @@ export default function Watchlist() {
     api.getMarketValuation().then(d => setValMap(d || {})).catch(() => {});
   }, []);
 
+  // ── 主動 REST 輪詢自選股報價（保底）──────────────────
+  // WebSocket 只推熱門股；自選股可能不在清單內，需補充拉取。
+  // 每 20 秒主動查詢一次，結果合入全域 quotes store。
+  useEffect(() => {
+    if (!watchlist.length) return;
+
+    const { setQuotes } = useStockStore.getState();
+
+    const fetchWatchlistQuotes = async () => {
+      const codes = watchlist.map(w => w.code);
+      try {
+        const res = await api.getQuotes(codes);
+        if (res?.quotes) setQuotes(res.quotes);
+      } catch (e) {
+        console.warn('[Watchlist] REST fallback error:', e.message);
+      }
+    };
+
+    // 立即抓一次
+    fetchWatchlistQuotes();
+
+    // 每 20 秒補拉一次
+    const timer = setInterval(fetchWatchlistQuotes, 20000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
+
   // ── 新增股票（只加代號，不含買入記錄）───────────────
   const addStock = async () => {
     if (!addCode.trim()) return;

@@ -433,6 +433,22 @@ export default function Dashboard() {
     }
   }, []);
 
+  // ── 自選股報價保底輪詢（同 Watchlist 頁）──────────────
+  useEffect(() => {
+    if (!watchlist.length) return;
+    const { setQuotes } = useStockStore.getState();
+    const fetchQuotes = async () => {
+      try {
+        const res = await api.getQuotes(watchlist.map(w => w.code));
+        if (res?.quotes) setQuotes(res.quotes);
+      } catch {}
+    };
+    fetchQuotes();
+    const timer = setInterval(fetchQuotes, 20000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
+
   const togglePanel = (id) => {
     setPanels(prev => {
       const next = { ...prev, [id]: !prev[id] };
