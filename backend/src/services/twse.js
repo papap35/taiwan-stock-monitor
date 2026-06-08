@@ -689,6 +689,133 @@ async function fetchWorldMarkets() {
   return data;
 }
 
+/**
+ * 抓取三大法人期貨部位（台指期外資淨多空）
+ * 資料來源：台灣期交所 TAIFEX opendata
+ * 回傳：{ date, longQty, shortQty, netQty, prevNetQty, change }
+ */
+async function fetchFuturesInstitutional() {
+  const cacheKey = 'futures_inst';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // TAIFEX 三大法人期貨 opendata
+    const url = 'https://opendata.taifex.com.tw/v1/ThreeLargeTraders';
+    const res  = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+      timeout: 10000,
+    });
+    const data = await res.json();
+
+    // 找出最新日期的臺股期貨(TX)外資及陸資資料
+    // 欄位：Date, ContractCode, InstitutionType, LongOpenInterestVolume,
+    //       ShortOpenInterestVolume, LongOpenInterestAmount, ShortOpenInterestAmount
+    const TX_CODE  = 'TX';
+    const FI_TYPE  = '外資及陸資'; // Foreign Institutional Investors
+
+    if (!Array.isArray(data) || !data.length) throw new Error('empty response');
+
+    // 取最新兩日資料（用於計算日變化）
+    const txRows = data.filter(r =>
+      (r.ContractCode || '').trim() === TX_CODE &&
+      (r.InstitutionType || '').trim() === FI_TYPE
+    );
+
+    if (!txRows.length) throw new Error('TX FI rows not found');
+
+    // 依日期降冪排列
+    txRows.sort((a, b) => (b.Date || '').localeCompare(a.Date || ''));
+    const latest = txRows[0];
+    const prev   = txRows[1];
+
+    const toN = v => parseInt(String(v || '0').replace(/,/g, '')) || 0;
+    const longQty    = toN(latest.LongOpenInterestVolume);
+    const shortQty   = toN(latest.ShortOpenInterestVolume);
+    const netQty     = longQty - shortQty;
+    const prevNetQty = prev ? toN(prev.LongOpenInterestVolume) - toN(prev.ShortOpenInterestVolume) : null;
+    const change     = prevNetQty !== null ? netQty - prevNetQty : null;
+
+    const result = {
+      date: latest.Date,
+      longQty,
+      shortQty,
+      netQty,
+      prevNetQty,
+      change,
+    };
+
+    cache.set(cacheKey, result, isTradingHours() ? 60 : 600);
+    return result;
+  } catch (err) {
+    console.warn('[TAIFEX] fetchFuturesInstitutional error:', err.message);
+    return cache.get(cacheKey) || null;
+  }
+}
+
+/**
+ * 抓取全市場融資融券趨勢（近 20 個交易日）
+ * 資料來源：TWSE MI_MARGN（每月匯總，免費公開）
+ * 回傳：[{ date, marginBal, shortBal, ratio }]  依日期升冪
+ */
+async function fetchMarketMarginTrend() {
+  const cacheKey = 'market_margin_trend';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const now   = new Date();
+    const twNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+
+    const fetchMonth = async (year, month) => {
+      const dateStr = `${year}${String(month).padStart(2, '0')}01`;
+      const url = `https://www.twse.com.tw/fund/MI_MARGN?response=json&date=${dateStr}&selectType=MS`;
+      const res  = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 12000 });
+      const data = await res.json();
+      if (data.stat !== 'OK' || !data.data) return [];
+
+      // 欄位（selectType=MS 為市場合計）：
+      // 0=日期 1=融資買進 2=融資賣出 3=融資現償 4=融資餘額 5=融資限額
+      // 6=融券賣出 7=融券買進 8=融券現償 9=融券餘額 10=融券限額 11=資券互抵
+      return data.data.map(row => {
+        const toN = s => parseInt(String(s || '0').replace(/,/g, '')) || 0;
+        const marginBal = toN(row[4]); // 融資餘額（千股）→ 轉為億元：×1000股×股價，這裡先存千股
+        const shortBal  = toN(row[9]); // 融券餘額（千股）
+        // 日期格式：民國年/月/日 → 轉 ISO
+        const [y, m, d] = String(row[0]).split('/');
+        const isoDate   = `${parseInt(y) + 1911}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        return {
+          date:      isoDate,
+          marginBal,
+          shortBal,
+          ratio: marginBal > 0 ? +(shortBal / marginBal * 100).toFixed(2) : 0,
+        };
+      });
+    };
+
+    // 抓當月 + 上月，確保能湊到 20 個交易日
+    const thisMonth = await fetchMonth(twNow.getFullYear(), twNow.getMonth() + 1);
+    let rows = [...thisMonth];
+
+    if (rows.length < 20) {
+      const prev = twNow.getMonth() === 0
+        ? await fetchMonth(twNow.getFullYear() - 1, 12)
+        : await fetchMonth(twNow.getFullYear(), twNow.getMonth());
+      rows = [...prev, ...rows];
+    }
+
+    // 依日期升冪，取最後 20 筆
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+    const result = rows.slice(-20);
+
+    cache.set(cacheKey, result, isTradingHours() ? 300 : 3600);
+    return result;
+  } catch (err) {
+    console.warn('[TWSE] fetchMarketMarginTrend error:', err.message);
+    return cache.get(cacheKey) || [];
+  }
+}
+
 module.exports = {
   fetchTaiex,
   fetchRealtimeQuotes,
@@ -705,6 +832,8 @@ module.exports = {
   fetchInstitutionalStock,
   fetchMarginStock,
   fetchWorldMarkets,
+  fetchFuturesInstitutional,
+  fetchMarketMarginTrend,
   isTradingHours,
   POPULAR_STOCKS,
 };

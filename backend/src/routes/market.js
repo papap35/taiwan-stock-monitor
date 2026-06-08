@@ -86,6 +86,26 @@ router.get('/world', async (req, res) => {
   }
 });
 
+// GET /api/market/futures — 外資台指期淨部位（TAIFEX 三大法人）
+router.get('/futures', async (req, res) => {
+  try {
+    const data = await twse.fetchFuturesInstitutional();
+    res.json(data || { error: 'no data' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/market/margin-trend — 全市場融資融券近 20 日趨勢
+router.get('/margin-trend', async (req, res) => {
+  try {
+    const data = await twse.fetchMarketMarginTrend();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/market/status — 市場狀態
 router.get('/status', (req, res) => {
   const now = new Date();

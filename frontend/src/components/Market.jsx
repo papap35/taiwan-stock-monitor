@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { createChart, LineSeries } from 'lightweight-charts';
-import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
+import { LineChart, Line, AreaChart, Area, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 
@@ -106,32 +106,180 @@ function WorldMarketsRow({ markets }) {
   );
 }
 
+// ── 期貨籌碼面板（P2-9）───────────────────────────────
+function FuturesPanel({ data }) {
+  if (!data) return (
+    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '20px 0' }}>載入中...</div>
+  );
+  if (data.error) return (
+    <div style={{ fontSize: 11, color: '#ef4444', textAlign: 'center', padding: '20px 0' }}>資料暫時無法取得</div>
+  );
+
+  const net     = data.netQty ?? 0;
+  const change  = data.change;
+  const isLong  = net > 0;
+  const netColor = net > 0 ? '#ff4d4f' : net < 0 ? '#00c48c' : '#64748b';
+  // 警示：外資單日轉空超過 5000 口
+  const isAlert = change !== null && change < -5000;
+
+  return (
+    <div>
+      {isAlert && (
+        <div style={{ background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '6px 10px', marginBottom: 8, fontSize: 11, color: '#ef4444', fontWeight: 700 }}>
+          ⚠️ 外資單日大幅轉空 {Math.abs(change).toLocaleString()} 口，注意風險
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+        {[
+          { label: '多方口數', val: data.longQty?.toLocaleString(), color: '#ff4d4f' },
+          { label: '空方口數', val: data.shortQty?.toLocaleString(), color: '#00c48c' },
+        ].map(item => (
+          <div key={item.label} style={{ background: 'var(--color-background-secondary)', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>{item.label}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-mono)', color: item.color }}>{item.val ?? '—'}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: isLong ? 'rgba(255,77,79,.06)' : 'rgba(0,196,140,.06)', border: `1px solid ${isLong ? 'rgba(255,77,79,.2)' : 'rgba(0,196,140,.2)'}`, borderRadius: 6, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>外資台指期淨部位</div>
+          <div style={{ fontSize: 22, fontWeight: 900, fontFamily: 'var(--font-mono)', color: netColor }}>
+            {net > 0 ? '+' : ''}{net.toLocaleString()} 口
+          </div>
+          <div style={{ fontSize: 10, color: isLong ? '#ff4d4f' : '#00c48c', fontWeight: 600 }}>
+            {isLong ? '▲ 淨多單' : net < 0 ? '▼ 淨空單' : '持平'}
+          </div>
+        </div>
+        {change !== null && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>日變化</div>
+            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-mono)', color: change > 0 ? '#ff4d4f' : change < 0 ? '#00c48c' : '#64748b' }}>
+              {change > 0 ? '+' : ''}{change.toLocaleString()}
+            </div>
+          </div>
+        )}
+      </div>
+      {data.date && (
+        <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginTop: 6, textAlign: 'right' }}>
+          資料日期：{data.date}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 融資融券趨勢面板（P2-11）──────────────────────────
+function MarginTrendPanel({ data }) {
+  if (!data || !data.length) return (
+    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '20px 0' }}>載入中...</div>
+  );
+
+  const latest   = data[data.length - 1];
+  const prev     = data[data.length - 2];
+  const marginChg = prev ? latest.marginBal - prev.marginBal : null;
+  const shortChg  = prev ? latest.shortBal  - prev.shortBal  : null;
+
+  // 格式化千股 → 萬張
+  const fmt = v => v != null ? (v / 10000).toFixed(1) : '—';
+
+  const chartData = data.map(d => ({
+    date:      d.date.slice(5),          // MM-DD
+    margin:    +(d.marginBal / 10000).toFixed(1),
+    short:     +(d.shortBal  / 10000).toFixed(1),
+    ratio:     d.ratio,
+  }));
+
+  return (
+    <div>
+      {/* 最新數值摘要 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
+        {[
+          { label: '融資餘額', val: `${fmt(latest.marginBal)} 萬張`, chg: marginChg, color: '#f97316' },
+          { label: '融券餘額', val: `${fmt(latest.shortBal)} 萬張`,  chg: shortChg,  color: '#3b82f6' },
+          { label: '券資比',   val: `${latest.ratio}%`,              chg: null,       color: latest.ratio > 20 ? '#ef4444' : latest.ratio > 10 ? '#f97316' : '#64748b' },
+        ].map(item => (
+          <div key={item.label} style={{ background: 'var(--color-background-secondary)', borderRadius: 6, padding: '7px 8px', textAlign: 'center' }}>
+            <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>{item.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: item.color }}>{item.val}</div>
+            {item.chg != null && (
+              <div style={{ fontSize: 9, color: item.chg > 0 ? '#ff4d4f' : item.chg < 0 ? '#00c48c' : '#64748b', fontFamily: 'var(--font-mono)' }}>
+                {item.chg > 0 ? '+' : ''}{(item.chg / 10000).toFixed(1)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 趨勢圖 */}
+      <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>近 {data.length} 日趨勢（萬張）</div>
+      <ResponsiveContainer width="100%" height={80}>
+        <AreaChart data={chartData} margin={{ top: 2, right: 0, left: -28, bottom: 0 }}>
+          <defs>
+            <linearGradient id="marginGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#f97316" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="shortGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis dataKey="date" tick={{ fontSize: 8, fill: '#475569' }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 8, fill: '#475569' }} />
+          <Tooltip
+            contentStyle={{ background: '#1e2d40', border: '1px solid #2d3f55', borderRadius: 4, fontSize: 10 }}
+            labelStyle={{ color: '#94a3b8' }}
+            formatter={(val, name) => [`${val} 萬張`, name === 'margin' ? '融資' : '融券']}
+          />
+          <Area type="monotone" dataKey="margin" stroke="#f97316" strokeWidth={1.5} fill="url(#marginGrad)" dot={false} />
+          <Area type="monotone" dataKey="short"  stroke="#3b82f6" strokeWidth={1.5} fill="url(#shortGrad)"  dot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+
+      {/* 高融資水位警示 */}
+      {latest.marginBal > 0 && latest.ratio > 20 && (
+        <div style={{ marginTop: 8, fontSize: 10, color: '#ef4444', background: 'rgba(239,68,68,.08)', borderRadius: 4, padding: '4px 8px' }}>
+          ⚠️ 券資比 {latest.ratio}%，融券軋空力道偏高
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 主元件 ────────────────────────────────────────────
 export default function Market() {
   const { taiex, quotes, getColor } = useStockStore();
-  const [breadth, setBreadth]     = useState(null);
-  const [history, setHistory]     = useState([]);
-  const [intraday, setIntraday]   = useState(null);
-  const [worldMkts, setWorldMkts] = useState([]);
-  const [chartMode, setChartMode] = useState('intraday');
+  const [breadth, setBreadth]         = useState(null);
+  const [history, setHistory]         = useState([]);
+  const [intraday, setIntraday]       = useState(null);
+  const [worldMkts, setWorldMkts]     = useState([]);
+  const [futures, setFutures]         = useState(null);
+  const [marginTrend, setMarginTrend] = useState([]);
+  const [chartMode, setChartMode]     = useState('intraday');
 
   useEffect(() => {
     // 首次載入
     api.getBreadth().then(setBreadth).catch(() => {});
     api.getMarketIntraday().then(setIntraday).catch(() => {});
     api.getWorldMarkets().then(setWorldMkts).catch(() => {});
+    api.getMarketFutures().then(setFutures).catch(() => {});
+    api.getMarketMarginTrend().then(setMarginTrend).catch(() => {});
 
     // 定時刷新
-    // 盤中廣度資料（30 秒）和分時走勢（60 秒）
-    const breadthTimer  = setInterval(() => api.getBreadth().then(setBreadth).catch(() => {}), 30000);
-    const intradayTimer = setInterval(() => api.getMarketIntraday().then(setIntraday).catch(() => {}), 60000);
-    // 國際市場（5 分鐘）
-    const worldTimer    = setInterval(() => api.getWorldMarkets().then(setWorldMkts).catch(() => {}), 5 * 60 * 1000);
+    const breadthTimer   = setInterval(() => api.getBreadth().then(setBreadth).catch(() => {}), 30000);
+    const intradayTimer  = setInterval(() => api.getMarketIntraday().then(setIntraday).catch(() => {}), 60000);
+    const worldTimer     = setInterval(() => api.getWorldMarkets().then(setWorldMkts).catch(() => {}), 5 * 60 * 1000);
+    // 期貨籌碼每 5 分鐘刷新（TAIFEX 日資料，盤後才更新，不需太頻繁）
+    const futuresTimer   = setInterval(() => api.getMarketFutures().then(setFutures).catch(() => {}), 5 * 60 * 1000);
+    // 融資融券每小時刷新（每日資料）
+    const marginTimer    = setInterval(() => api.getMarketMarginTrend().then(setMarginTrend).catch(() => {}), 60 * 60 * 1000);
 
     return () => {
       clearInterval(breadthTimer);
       clearInterval(intradayTimer);
       clearInterval(worldTimer);
+      clearInterval(futuresTimer);
+      clearInterval(marginTimer);
     };
   }, []);
 
@@ -412,6 +560,20 @@ export default function Market() {
             })}
           </div>
         </div>
+
+        {/* ── 期貨籌碼（P2-9）── */}
+        <div style={{ background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+          <div className="section-label">期貨籌碼</div>
+          <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>外資台指期淨部位（TAIFEX）</div>
+          <FuturesPanel data={futures} />
+        </div>
+
+        {/* ── 融資融券趨勢（P2-11）── */}
+        <div style={{ background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+          <div className="section-label">信用交易趨勢</div>
+          <MarginTrendPanel data={marginTrend} />
+        </div>
+
       </div>
     </div>
   );
