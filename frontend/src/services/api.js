@@ -29,6 +29,8 @@ export const api = {
   getMarketValuation:     () => apiFetch('/api/market/valuation'),
   getMarketIntraday:      () => apiFetch('/api/market/intraday'),
   getWorldMarkets:        () => apiFetch('/api/market/world'),
+  getMarketFutures:       () => apiFetch('/api/market/futures'),
+  getMarketMarginTrend:   () => apiFetch('/api/market/margin-trend'),
   getStockValuation: (code)   => apiFetch(`/api/stocks/${code}/valuation`),
 
   // 警報
