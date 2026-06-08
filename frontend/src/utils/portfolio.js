@@ -420,3 +420,123 @@ export function calcChipScore(instData, marginData) {
     },
   };
 }
+
+// ── P3-12/P3-13: 交易日誌 & 績效統計 ────────────────────
+
+/**
+ * 計算已出場 Lot 的實現損益、持有天數、年化報酬率。
+ * @param {object} lot - 含 exitPrice, exitDate, date, cost, shares, oddLotShares
+ * @returns {{ pnlAmt: number, pnlPct: number, holdDays: number, annualReturn: number } | null}
+ */
+export function calcExitedLot(lot) {
+  const { exitPrice, exitDate, date, cost, shares, oddLotShares } = lot;
+  if (!exitPrice || !cost || exitPrice <= 0 || cost <= 0) return null;
+
+  const totalShares = (parseInt(shares) || 0) * 1000 + (parseInt(oddLotShares) || 0);
+  if (totalShares <= 0) return null;
+
+  const pnlAmt    = (exitPrice - cost) * totalShares;
+  const pnlPct    = (exitPrice / cost - 1) * 100;
+  const entryMs   = new Date(date).getTime();
+  const exitMs    = new Date(exitDate || date).getTime();
+  const holdDays  = Math.max(Math.round((exitMs - entryMs) / 86400000), 1);
+  const annualReturn = (Math.pow(1 + pnlPct / 100, 365 / holdDays) - 1) * 100;
+
+  return {
+    pnlAmt:       +pnlAmt.toFixed(0),
+    pnlPct:       +pnlPct.toFixed(2),
+    holdDays,
+    annualReturn: +annualReturn.toFixed(1),
+  };
+}
+
+/**
+ * 從所有已出場 Lot 計算績效統計。
+ * @param {Array<{ lot: object, code: string, name: string, strategy: string }>} exitedEntries
+ * @returns {object} 績效統計
+ */
+export function calcPerformance(exitedEntries) {
+  if (!exitedEntries || exitedEntries.length === 0) return null;
+
+  const results = exitedEntries
+    .map(({ lot, code, name, strategy }) => {
+      const r = calcExitedLot(lot);
+      if (!r) return null;
+      return { ...r, code, name, strategy, exitDate: lot.exitDate || lot.date };
+    })
+    .filter(Boolean);
+
+  if (results.length === 0) return null;
+
+  const wins   = results.filter(r => r.pnlPct > 0);
+  const losses = results.filter(r => r.pnlPct <= 0);
+
+  const totalTrades  = results.length;
+  const winCount     = wins.length;
+  const winRate      = +(winCount / totalTrades * 100).toFixed(1);
+  const avgWin       = wins.length   ? +(wins.reduce((s, r)   => s + r.pnlPct, 0) / wins.length).toFixed(2)   : 0;
+  const avgLoss      = losses.length ? +(losses.reduce((s, r) => s + r.pnlPct, 0) / losses.length).toFixed(2) : 0;
+  const profitFactor = avgLoss < 0   ? +Math.abs(avgWin * wins.length / (avgLoss * losses.length)).toFixed(2) : null;
+  const expectancy   = +(winRate / 100 * avgWin + (1 - winRate / 100) * avgLoss).toFixed(2);
+
+  // 最大連勝/連敗
+  let maxWinStreak = 0, maxLossStreak = 0, curWin = 0, curLoss = 0;
+  results.sort((a, b) => (a.exitDate || '').localeCompare(b.exitDate || ''));
+  for (const r of results) {
+    if (r.pnlPct > 0) { curWin++; curLoss = 0; maxWinStreak  = Math.max(maxWinStreak,  curWin);  }
+    else              { curLoss++; curWin = 0; maxLossStreak = Math.max(maxLossStreak, curLoss); }
+  }
+
+  // 最大單筆
+  const maxWinTrade  = results.reduce((m, r) => r.pnlAmt > (m?.pnlAmt ?? -Infinity) ? r : m, null);
+  const maxLossTrade = results.reduce((m, r) => r.pnlAmt < (m?.pnlAmt ?? Infinity)  ? r : m, null);
+
+  // 月度損益（按出場月份）
+  const monthlyMap = {};
+  for (const r of results) {
+    const month = (r.exitDate || '').slice(0, 7); // YYYY-MM
+    if (!month) continue;
+    monthlyMap[month] = (monthlyMap[month] || 0) + r.pnlAmt;
+  }
+  const monthly = Object.entries(monthlyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, pnlAmt]) => ({ month, pnlAmt: +pnlAmt.toFixed(0) }));
+
+  // 個股勝率
+  const byCode = {};
+  for (const r of results) {
+    if (!byCode[r.code]) byCode[r.code] = { code: r.code, name: r.name, wins: 0, total: 0 };
+    byCode[r.code].total++;
+    if (r.pnlPct > 0) byCode[r.code].wins++;
+  }
+  const stockWinRate = Object.values(byCode)
+    .map(s => ({ ...s, winRate: +(s.wins / s.total * 100).toFixed(0) }))
+    .sort((a, b) => b.winRate - a.winRate);
+
+  // 策略勝率
+  const byStrategy = {};
+  for (const r of results) {
+    const s = r.strategy || 'unknown';
+    if (!byStrategy[s]) byStrategy[s] = { strategy: s, wins: 0, total: 0 };
+    byStrategy[s].total++;
+    if (r.pnlPct > 0) byStrategy[s].wins++;
+  }
+  const strategyWinRate = Object.values(byStrategy)
+    .map(s => ({ ...s, winRate: +(s.wins / s.total * 100).toFixed(0) }));
+
+  // 資金曲線（累積損益金額）
+  let cumulative = 0;
+  const equityCurve = results.map(r => {
+    cumulative += r.pnlAmt;
+    return { date: r.exitDate, pnlAmt: r.pnlAmt, cumulative: +cumulative.toFixed(0) };
+  });
+
+  return {
+    totalTrades, winCount, winRate,
+    avgWin, avgLoss, profitFactor, expectancy,
+    maxWinStreak, maxLossStreak,
+    maxWinTrade, maxLossTrade,
+    monthly, stockWinRate, strategyWinRate, equityCurve,
+    results,
+  };
+}
