@@ -6,6 +6,7 @@ import {
   migrateLots, lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct,
   calcPortfolio, fmtPct, fmtAmt, fmtShares,
   calcRR, calcPositionSize, calcTrailingStopPrice, isTrailingStopTriggered,
+  calcChipScore,
 } from '../utils/portfolio';
 
 // ─────────────────────────────────────────────────────────────
@@ -324,11 +325,29 @@ export default function Watchlist() {
   const [briefText, setBriefText] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
   const [valMap, setValMap]       = useState({});
+  const [chipData, setChipData]   = useState({}); // { [code]: { inst, margin } }
+  const [chipExpanded, setChipExpanded] = useState(new Set()); // 展開籌碼明細的股票
   const briefRef = useRef(null);
 
   useEffect(() => {
     api.getMarketValuation().then(d => setValMap(d || {})).catch(() => {});
   }, []);
+
+  // ── 籌碼資料：每支自選股抓法人 + 融資券（mount 時一次，不需頻繁刷新）
+  useEffect(() => {
+    if (!watchlist.length) return;
+    watchlist.forEach(({ code }) => {
+      Promise.allSettled([
+        api.getInstitutional(code, 1),
+        api.getMargin(code, 1),
+      ]).then(([instRes, margRes]) => {
+        const inst   = instRes.status === 'fulfilled'  ? (instRes.value?.data  || []) : [];
+        const margin = margRes.status === 'fulfilled'  ? (margRes.value?.data  || []) : [];
+        setChipData(prev => ({ ...prev, [code]: { inst, margin } }));
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
 
   // ── 主動 REST 輪詢自選股報價（保底）──────────────────
   // WebSocket 只推熱門股；自選股可能不在清單內，需補充拉取。
@@ -516,6 +535,14 @@ export default function Watchlist() {
             const pColor = pnlPct == null ? '#64748b' : pnlPct >= 0 ? '#ff4d4f' : '#00c48c';
             const strat = STRATEGY_MAP[strategy];
             const val = valMap[code];
+            const chip = chipData[code];
+            const chipResult = chip ? calcChipScore(chip.inst, chip.margin) : null;
+            const chipScore = chipResult?.score ?? null;
+            const chipColor = chipScore == null ? '#64748b'
+              : chipScore >= 70 ? '#00c48c'
+              : chipScore >= 40 ? '#f59e0b'
+              : '#ef4444';
+            const isChipExp = chipExpanded.has(code);
             const hasLots = lots.length > 0;
 
             return (
@@ -610,6 +637,20 @@ export default function Watchlist() {
                     {!target && !stopLoss && <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
                   </div>
 
+                  {/* 籌碼分 */}
+                  <div style={{ textAlign: 'right' }} onClick={e => { e.stopPropagation(); if (chipResult) setChipExpanded(prev => { const next = new Set(prev); next.has(code) ? next.delete(code) : next.add(code); return next; }); }}>
+                    {chipScore != null ? (
+                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, fontFamily: 'var(--font-mono)', color: chipColor, lineHeight: 1 }}>
+                          {chipScore}
+                        </div>
+                        <div style={{ fontSize: 8, color: chipColor, marginTop: 1 }}>籌碼分</div>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>—</span>
+                    )}
+                  </div>
+
                   {/* 操作按鈕 */}
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                     <SmBtn onClick={() => setChartStock({ code, name, price, changePercent: q?.changePercent })} color="var(--color-brand)">K線</SmBtn>
@@ -617,6 +658,23 @@ export default function Watchlist() {
                     <SmBtn onClick={() => removeFromWatchlist(code)} color="#f87171" danger>刪除</SmBtn>
                   </div>
                 </div>
+
+                {/* ── 籌碼分明細展開 ──────────────────────── */}
+                {isChipExp && chipResult && (
+                  <div style={{ background: 'rgba(0,0,0,.25)', borderTop: '1px solid rgba(255,255,255,.04)', padding: '8px 16px' }}>
+                    <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 6, letterSpacing: '.06em' }}>籌碼評分明細</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                      {Object.values(chipResult.detail).map(item => (
+                        <div key={item.label} style={{ background: 'var(--color-background-secondary)', borderRadius: 5, padding: '5px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)' }}>{item.label}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: item.score > 0 ? '#00c48c' : '#475569' }}>
+                            +{item.score}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* ── 展開：買入記錄 ─────────────────────── */}
                 {isExp && (
