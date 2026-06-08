@@ -46,9 +46,11 @@ export function calcPortfolio(item, price) {
   const totalShares = lots.reduce((s, l) => s + lotShares(l), 0);
   const totalCost   = lots.reduce((s, l) => s + lotCostTotal(l), 0);
   const avgCost     = totalShares > 0 ? totalCost / totalShares : 0;
-  const mktVal      = price * totalShares;
-  const pnlAmt      = mktVal - totalCost;
-  const pnlPct      = totalCost > 0 ? (mktVal / totalCost - 1) * 100 : null;
+  // price=0 表示尚無報價，不應計算損益（否則會顯示 -100%）
+  const hasPrice    = price > 0;
+  const mktVal      = hasPrice ? price * totalShares : 0;
+  const pnlAmt      = (hasPrice && totalCost > 0) ? mktVal - totalCost : null;
+  const pnlPct      = (hasPrice && totalCost > 0) ? (mktVal / totalCost - 1) * 100 : null;
   return { lots, totalShares, totalCost, avgCost, mktVal, pnlAmt, pnlPct };
 }
 
