@@ -5,6 +5,7 @@ import StockChart from './StockChart';
 import {
   migrateLots, lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct,
   calcPortfolio, fmtPct, fmtAmt, fmtShares,
+  calcRR, calcPositionSize, calcTrailingStopPrice, isTrailingStopTriggered,
 } from '../utils/portfolio';
 
 // ─────────────────────────────────────────────────────────────
@@ -55,27 +56,39 @@ function MdText({ text }) {
 // ─────────────────────────────────────────────────────────────
 //  Lot Modal（新增 / 編輯買入記錄）
 // ─────────────────────────────────────────────────────────────
-function LotModal({ stockName, lot, onSave, onClose }) {
+function LotModal({ stockName, lot, settings, onSave, onClose }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
-    date:         lot?.date         ?? today,
-    shares:       lot?.shares       ?? '',
-    oddLotShares: lot?.oddLotShares ?? '',
-    cost:         lot?.cost         ?? '',
-    note:         lot?.note         ?? '',
+    date:            lot?.date            ?? today,
+    shares:          lot?.shares          ?? '',
+    oddLotShares:    lot?.oddLotShares    ?? '',
+    cost:            lot?.cost            ?? '',
+    note:            lot?.note            ?? '',
+    trailingStopPct: lot?.trailingStopPct ?? '',
+    planTarget:      lot?.planTarget      ?? '',
+    planStop:        lot?.planStop        ?? '',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const inp = { padding: '7px 10px', border: '1px solid var(--color-border-secondary)', borderRadius: 6, background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, width: '100%' };
+  const label = { fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 };
 
   const total = (parseInt(form.shares) || 0) * 1000 + (parseInt(form.oddLotShares) || 0);
   const totalCost = total * (parseFloat(form.cost) || 0);
+
+  // R/R 計算
+  const rrResult = calcRR(parseFloat(form.cost), parseFloat(form.planTarget), parseFloat(form.planStop));
+
+  // 部位規模計算
+  const capital = settings?.totalCapital ?? 0;
+  const riskPct = settings?.maxRiskPct ?? 2;
+  const posResult = calcPositionSize(capital, riskPct, parseFloat(form.cost), parseFloat(form.planStop));
 
   const valid = (form.shares || form.oddLotShares) && form.cost;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f1923', border: '1px solid var(--color-border-secondary)', borderRadius: 10, width: '100%', maxWidth: 400, padding: 20 }} className="fade-in">
+      <div style={{ background: '#0f1923', border: '1px solid var(--color-border-secondary)', borderRadius: 10, width: '100%', maxWidth: 440, padding: 20, maxHeight: '90vh', overflowY: 'auto' }} className="fade-in">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>
             {lot ? '編輯買入記錄' : '新增買入記錄'}
@@ -87,13 +100,13 @@ function LotModal({ stockName, lot, onSave, onClose }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {/* 日期 */}
           <div>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>買入日期</div>
+            <div style={label}>買入日期</div>
             <input style={inp} type="date" value={form.date} onChange={e => f('date', e.target.value)} />
           </div>
 
           {/* 數量 */}
           <div>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>買入數量</div>
+            <div style={{ ...label, marginBottom: 6 }}>買入數量</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
                 <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>整張（張）</div>
@@ -113,7 +126,7 @@ function LotModal({ stockName, lot, onSave, onClose }) {
 
           {/* 成本 */}
           <div>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>買入成本（元/股）</div>
+            <div style={label}>買入成本（元/股）</div>
             <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.cost} onChange={e => f('cost', e.target.value)} />
             {totalCost > 0 && (
               <div style={{ marginTop: 5, fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
@@ -122,9 +135,83 @@ function LotModal({ stockName, lot, onSave, onClose }) {
             )}
           </div>
 
+          {/* ── 動態停損 ─────────────────────────────────── */}
+          <div style={{ borderTop: '1px solid var(--color-border-tertiary)', paddingTop: 10 }}>
+            <div style={label}>🛡 移動停損設定（選填）</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>移動停損比例（%）</div>
+                <input style={inp} type="number" step="0.1" min="0" max="50" placeholder="例：8" value={form.trailingStopPct} onChange={e => f('trailingStopPct', e.target.value)} />
+              </div>
+              <div>
+                {form.cost && form.trailingStopPct && (
+                  <div style={{ paddingTop: 18, fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                    從成本觸發：<br />
+                    <span style={{ fontFamily: 'var(--font-mono)', color: '#f87171', fontWeight: 700 }}>
+                      ${(parseFloat(form.cost) * (1 - parseFloat(form.trailingStopPct) / 100)).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+              系統追蹤此批買入的價格高點，回落設定比例時發出警示
+            </div>
+          </div>
+
+          {/* ── 風險報酬計算器 ──────────────────────────── */}
+          <div style={{ borderTop: '1px solid var(--color-border-tertiary)', paddingTop: 10 }}>
+            <div style={label}>⚖️ 風險報酬計算器（選填）</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>規劃目標價</div>
+                <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.planTarget} onChange={e => f('planTarget', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>規劃停損價</div>
+                <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.planStop} onChange={e => f('planStop', e.target.value)} />
+              </div>
+            </div>
+            {rrResult && (
+              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6, background: 'rgba(59,130,246,.08)', border: '1px solid rgba(59,130,246,.2)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>潛在獲利</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#ff4d4f', fontWeight: 700 }}>+{rrResult.reward}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>潛在風險</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#00c48c', fontWeight: 700 }}>-{rrResult.risk}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginBottom: 2 }}>R/R 比</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: rrResult.rr >= 2 ? '#f59e0b' : rrResult.rr >= 1 ? '#e2e8f0' : '#94a3b8' }}>
+                    1:{rrResult.rr}
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* 部位規模建議 */}
+            {posResult && (
+              <div style={{ marginTop: 6, padding: '7px 10px', borderRadius: 6, background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)', fontSize: 11 }}>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>📐 部位建議（資金 {(capital / 10000).toFixed(0)}萬，風險 {riskPct}%）：</span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: '#f59e0b', fontWeight: 700, marginLeft: 6 }}>
+                  {posResult.lots > 0 ? `${posResult.lots} 張` : `${posResult.shares} 股`}
+                </span>
+                <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10, marginLeft: 4 }}>
+                  （最大損失 {posResult.maxLoss.toLocaleString()} 元）
+                </span>
+              </div>
+            )}
+            {capital === 0 && (
+              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 5 }}>
+                💡 在「設定」中設定總資金，可顯示建議買入張數
+              </div>
+            )}
+          </div>
+
           {/* 備註 */}
           <div>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>備註（選填）</div>
+            <div style={label}>備註（選填）</div>
             <input style={inp} placeholder="例：逢低布局、法說前布局..." value={form.note} onChange={e => f('note', e.target.value)} />
           </div>
         </div>
@@ -134,11 +221,14 @@ function LotModal({ stockName, lot, onSave, onClose }) {
           <button
             disabled={!valid}
             onClick={() => onSave({
-              date:         form.date,
-              shares:       parseInt(form.shares)       || 0,
-              oddLotShares: parseInt(form.oddLotShares) || 0,
-              cost:         parseFloat(form.cost),
-              note:         form.note.trim(),
+              date:            form.date,
+              shares:          parseInt(form.shares)       || 0,
+              oddLotShares:    parseInt(form.oddLotShares) || 0,
+              cost:            parseFloat(form.cost),
+              note:            form.note.trim(),
+              trailingStopPct: form.trailingStopPct ? parseFloat(form.trailingStopPct) : null,
+              planTarget:      form.planTarget      ? parseFloat(form.planTarget)      : null,
+              planStop:        form.planStop        ? parseFloat(form.planStop)        : null,
             })}
             style={{ flex: 1, padding: '8px', background: valid ? 'var(--color-brand)' : 'var(--color-background-tertiary)', border: 'none', borderRadius: 6, color: valid ? '#fff' : 'var(--color-text-tertiary)', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600 }}>
             {lot ? '儲存變更' : '新增記錄'}
@@ -221,7 +311,7 @@ function StockSettingsModal({ item, onSave, onClose }) {
 //  主元件
 // ─────────────────────────────────────────────────────────────
 export default function Watchlist() {
-  const { watchlist, quotes, addToWatchlist, removeFromWatchlist, updateWatchlistItem, addLot, updateLot, removeLot } = useStockStore();
+  const { watchlist, quotes, peakPrices, settings, addToWatchlist, removeFromWatchlist, updateWatchlistItem, addLot, updateLot, removeLot } = useStockStore();
   const [addCode, setAddCode]     = useState('');
   const [addName, setAddName]     = useState('');
   const [addLoading, setAddLoading] = useState(false);
@@ -239,6 +329,33 @@ export default function Watchlist() {
   useEffect(() => {
     api.getMarketValuation().then(d => setValMap(d || {})).catch(() => {});
   }, []);
+
+  // ── 主動 REST 輪詢自選股報價（保底）──────────────────
+  // WebSocket 只推熱門股；自選股可能不在清單內，需補充拉取。
+  // 每 20 秒主動查詢一次，結果合入全域 quotes store。
+  useEffect(() => {
+    if (!watchlist.length) return;
+
+    const { setQuotes } = useStockStore.getState();
+
+    const fetchWatchlistQuotes = async () => {
+      const codes = watchlist.map(w => w.code);
+      try {
+        const res = await api.getQuotes(codes);
+        if (res?.quotes) setQuotes(res.quotes);
+      } catch (e) {
+        console.warn('[Watchlist] REST fallback error:', e.message);
+      }
+    };
+
+    // 立即抓一次
+    fetchWatchlistQuotes();
+
+    // 每 20 秒補拉一次
+    const timer = setInterval(fetchWatchlistQuotes, 20000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
 
   // ── 新增股票（只加代號，不含買入記錄）───────────────
   const addStock = async () => {
@@ -316,6 +433,7 @@ export default function Watchlist() {
         <LotModal
           stockName={`${lotModal.name}（${lotModal.code}）`}
           lot={lotModal.lot}
+          settings={settings}
           onSave={(data) => {
             if (lotModal.lot) updateLot(lotModal.code, lotModal.lot.id, data);
             else addLot(lotModal.code, data);
@@ -519,38 +637,62 @@ export default function Watchlist() {
                       const lpnlAmt = lot.cost && price ? lotPnlAmt(lot, price) : null;
                       const lmkt    = price ? lotMktVal(lot, price) : null;
                       const lColor  = lpnlPct == null ? '#64748b' : lpnlPct >= 0 ? '#ff4d4f' : '#00c48c';
+                      // 動態停損計算
+                      const peak = peakPrices?.[code] ?? 0;
+                      const tsPct = lot.trailingStopPct;
+                      const tsPrice = (peak > 0 && tsPct) ? calcTrailingStopPrice(peak, tsPct) : null;
+                      const tsTriggered = (price > 0 && tsPrice) ? isTrailingStopTriggered(price, peak, tsPct) : false;
+                      // R/R 摘要
+                      const rrInfo = lot.planTarget && lot.planStop && lot.cost ? calcRR(lot.cost, lot.planTarget, lot.planStop) : null;
                       return (
-                        <div key={lot.id}
-                          style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 100px 100px 90px 1fr', alignItems: 'center', padding: '7px 48px', borderTop: '1px solid rgba(255,255,255,.03)' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.025)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                            {lot.date || <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
-                          </div>
-                          <div style={{ textAlign: 'right', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', paddingRight: 6 }}>
-                            <div>{fmtShares(lot.shares, lot.oddLotShares)}</div>
-                            <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)' }}>{ls.toLocaleString()} 股</div>
-                          </div>
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
-                            {lot.cost ? `$${lot.cost}` : '—'}
-                          </div>
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: lColor, paddingRight: 6 }}>
-                            {lpnlPct != null ? fmtPct(lpnlPct) : '—'}
-                          </div>
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: lColor, paddingRight: 6 }}>
-                            {lpnlAmt != null ? fmtAmt(lpnlAmt) : '—'}
-                          </div>
-                          <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
-                            {lmkt ? `${(lmkt / 10000).toFixed(0)}萬` : '—'}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 6 }}>
-                            <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {lot.note || ''}
-                            </span>
-                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                              <SmBtn onClick={() => setLotModal({ code, name, lot })} color="#f59e0b">編輯</SmBtn>
-                              <SmBtn onClick={() => removeLot(code, lot.id)} color="#f87171" danger>刪除</SmBtn>
+                        <div key={lot.id}>
+                          <div
+                            style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 100px 100px 90px 1fr', alignItems: 'center', padding: '7px 48px', borderTop: '1px solid rgba(255,255,255,.03)', background: tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent' }}
+                            onMouseEnter={e => e.currentTarget.style.background = tsTriggered ? 'rgba(248,113,113,.07)' : 'rgba(255,255,255,.025)'}
+                            onMouseLeave={e => e.currentTarget.style.background = tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent'}
+                          >
+                            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                              {lot.date || <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                            </div>
+                            <div style={{ textAlign: 'right', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', paddingRight: 6 }}>
+                              <div>{fmtShares(lot.shares, lot.oddLotShares)}</div>
+                              <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)' }}>{ls.toLocaleString()} 股</div>
+                            </div>
+                            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
+                              {lot.cost ? `$${lot.cost}` : '—'}
+                            </div>
+                            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: lColor, paddingRight: 6 }}>
+                              {lpnlPct != null ? fmtPct(lpnlPct) : '—'}
+                            </div>
+                            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: lColor, paddingRight: 6 }}>
+                              {lpnlAmt != null ? fmtAmt(lpnlAmt) : '—'}
+                            </div>
+                            <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
+                              {lmkt ? `${(lmkt / 10000).toFixed(0)}萬` : '—'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 6 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflow: 'hidden' }}>
+                                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {lot.note || ''}
+                                </span>
+                                {/* 動態停損徽章 */}
+                                {tsPrice && (
+                                  <span style={{ fontSize: 9, color: tsTriggered ? '#f87171' : '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                                    {tsTriggered ? '⚠️ 停損觸發！' : `🛡 移動停損 $${tsPrice.toFixed(2)}`}
+                                    {peak > 0 && ` (峰 $${peak.toFixed(2)})`}
+                                  </span>
+                                )}
+                                {/* R/R 徽章 */}
+                                {rrInfo && (
+                                  <span style={{ fontSize: 9, color: rrInfo.rr >= 2 ? '#f59e0b' : '#64748b', fontFamily: 'var(--font-mono)' }}>
+                                    ⚖️ R/R 1:{rrInfo.rr}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                <SmBtn onClick={() => setLotModal({ code, name, lot })} color="#f59e0b">編輯</SmBtn>
+                                <SmBtn onClick={() => removeLot(code, lot.id)} color="#f87171" danger>刪除</SmBtn>
+                              </div>
                             </div>
                           </div>
                         </div>

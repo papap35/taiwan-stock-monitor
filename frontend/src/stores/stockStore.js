@@ -50,10 +50,31 @@ export const useStockStore = create((set, get) => ({
 
   // 即時報價 map: { code: QuoteObject }
   quotes: {},
-  setQuotes: (newQuotes) => set((s) => ({
-    quotes: { ...s.quotes, ...newQuotes },
-    lastUpdated: new Date(),
-  })),
+  // 追蹤高點 map: { code: number }（用於動態停損計算）
+  peakPrices: ls.get('peak_prices', {}),
+  setQuotes: (newQuotes) => set((s) => {
+    // 更新追蹤高點：若新報價高於紀錄高點則更新
+    const peakPrices = { ...s.peakPrices };
+    for (const [code, q] of Object.entries(newQuotes)) {
+      const p = q?.price ?? 0;
+      if (p > 0 && (!peakPrices[code] || p > peakPrices[code])) {
+        peakPrices[code] = p;
+      }
+    }
+    ls.set('peak_prices', peakPrices);
+    return {
+      quotes: { ...s.quotes, ...newQuotes },
+      peakPrices,
+      lastUpdated: new Date(),
+    };
+  }),
+  // 手動重置某支股票的追蹤高點（例如換手後重新計算）
+  resetPeakPrice: (code) => set((s) => {
+    const peakPrices = { ...s.peakPrices };
+    delete peakPrices[code];
+    ls.set('peak_prices', peakPrices);
+    return { peakPrices };
+  }),
   lastUpdated: null,
 
   // 熱門股
@@ -148,6 +169,9 @@ export const useStockStore = create((set, get) => ({
     notifyBuy:       true,
     notifySell:      true,
     notifyMarket:    true,
+    // P0-3: 部位規模計算
+    totalCapital:    0,    // 總資金（元），0 = 未設定
+    maxRiskPct:      2,    // 單筆最大風險比例（%）
   }),
 
   updateSettings: (patch) => set((s) => {

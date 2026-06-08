@@ -118,7 +118,7 @@ function TaiexPanel({ taiex }) {
       </div>
       {taiex.volume > 0 && (
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', textAlign: 'right' }}>
-          成交量：<span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{(taiex.volume / 1000).toFixed(0)} 億</span>
+          成交量：<span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>{taiex.volume.toLocaleString()} 億</span>
         </div>
       )}
     </div>
@@ -184,6 +184,16 @@ function BreadthPanel({ breadth }) {
   const total = breadth.up + breadth.down + breadth.flat || 1;
   return (
     <div>
+      {breadth.source === 'daily' && (
+        <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', textAlign: 'right', marginBottom: 4 }}>
+          ⏱ 昨日收盤資料
+        </div>
+      )}
+      {breadth.source === 'realtime' && (
+        <div style={{ fontSize: 9, color: '#00c48c', textAlign: 'right', marginBottom: 4 }}>
+          ● 即時資料
+        </div>
+      )}
       {/* 進度條 */}
       <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12, gap: 1 }}>
         <div style={{ flex: breadth.up,   background: '#ff4d4f' }} />
@@ -431,7 +441,28 @@ export default function Dashboard() {
     if (panels.institutional) {
       api.getMarketInstitutional().then(setInstData).catch(() => {});
     }
+    // 盤中自動刷新：廣度 30s，國際市場 5min
+    const breadthTimer  = setInterval(() => api.getBreadth().then(setBreadth).catch(() => {}), 30000);
+    const worldTimer    = setInterval(() => api.getWorldMarkets().then(setWorldMkts).catch(() => {}), 5 * 60 * 1000);
+    return () => { clearInterval(breadthTimer); clearInterval(worldTimer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── 自選股報價保底輪詢（同 Watchlist 頁）──────────────
+  useEffect(() => {
+    if (!watchlist.length) return;
+    const { setQuotes } = useStockStore.getState();
+    const fetchQuotes = async () => {
+      try {
+        const res = await api.getQuotes(watchlist.map(w => w.code));
+        if (res?.quotes) setQuotes(res.quotes);
+      } catch {}
+    };
+    fetchQuotes();
+    const timer = setInterval(fetchQuotes, 20000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
 
   const togglePanel = (id) => {
     setPanels(prev => {
@@ -442,10 +473,12 @@ export default function Dashboard() {
   };
 
   const now = new Date();
+  // 使用台灣時區（UTC+8）判斷交易時段，避免在非台灣時區的環境判斷錯誤
+  const nowTW = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
   const isTradingHours = (() => {
-    const h = now.getHours(), m = now.getMinutes();
+    const h = nowTW.getHours(), m = nowTW.getMinutes();
     const min = h * 60 + m;
-    const day = now.getDay();
+    const day = nowTW.getDay();
     return day >= 1 && day <= 5 && min >= 9 * 60 && min <= 13 * 60 + 30;
   })();
 
@@ -457,7 +490,7 @@ export default function Dashboard() {
           <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
             儀表板
             <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 10, fontWeight: 400 }}>
-              {now.toLocaleDateString('zh-TW', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              {nowTW.toLocaleDateString('zh-TW', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>

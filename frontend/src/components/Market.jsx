@@ -116,9 +116,23 @@ export default function Market() {
   const [chartMode, setChartMode] = useState('intraday');
 
   useEffect(() => {
+    // 首次載入
     api.getBreadth().then(setBreadth).catch(() => {});
     api.getMarketIntraday().then(setIntraday).catch(() => {});
     api.getWorldMarkets().then(setWorldMkts).catch(() => {});
+
+    // 定時刷新
+    // 盤中廣度資料（30 秒）和分時走勢（60 秒）
+    const breadthTimer  = setInterval(() => api.getBreadth().then(setBreadth).catch(() => {}), 30000);
+    const intradayTimer = setInterval(() => api.getMarketIntraday().then(setIntraday).catch(() => {}), 60000);
+    // 國際市場（5 分鐘）
+    const worldTimer    = setInterval(() => api.getWorldMarkets().then(setWorldMkts).catch(() => {}), 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(breadthTimer);
+      clearInterval(intradayTimer);
+      clearInterval(worldTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -128,15 +142,24 @@ export default function Market() {
 
   const chgColor = taiex ? (taiex.changePercent > 0 ? '#ff4d4f' : taiex.changePercent < 0 ? '#00c48c' : '#64748b') : '#64748b';
 
-  const sectorPerf = SECTORS.map(sector => {
+  // 類股表現：優先使用 intraday.sectors 的真實類股指數漲跌%
+  // intraday.sectors 僅有「今日點數」，需配合「前日收盤」計算漲跌%
+  // 由於 MI_5MINS_INDEX 未提供各類股前收，改以個股代號平均作為補充
+  const sectorPerfFromQuotes = SECTORS.map(sector => {
     const vals = sector.codes.map(c => quotes[c]?.changePercent).filter(v => v != null);
-    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-    return { ...sector, avg: +avg.toFixed(2) };
-  }).sort((a, b) => b.avg - a.avg);
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    return { ...sector, avg: avg != null ? +avg.toFixed(2) : null };
+  }).sort((a, b) => (b.avg ?? -999) - (a.avg ?? -999));
+
+  // 若 intraday.sectors 有資料，合併顯示類股指數點數
+  const sectorIndexMap = {};
+  (intraday?.sectors || []).forEach(s => { sectorIndexMap[s.name] = s.value; });
+
+  const sectorPerf = sectorPerfFromQuotes;
 
   const breadthTotal = breadth ? breadth.up + breadth.down + breadth.flat : 0;
   const prevClose    = taiex ? +(taiex.value - taiex.change).toFixed(2) : 0;
-  const volBil       = taiex?.volume ? (taiex.volume / 1000).toFixed(0) : null; // 億元
+  const volBil       = taiex?.volume ? taiex.volume.toLocaleString() : null; // 億元（後端已換算）
   const advance      = breadth ? (breadth.up / (breadthTotal || 1) * 100).toFixed(0) : null;
 
   return (
@@ -321,17 +344,26 @@ export default function Market() {
           <div className="section-label">類股表現</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sectorPerf.map(s => {
-              const up = s.avg > 0;
-              const color = up ? '#ff4d4f' : s.avg < 0 ? '#00c48c' : '#64748b';
-              const barPct = Math.min(Math.abs(s.avg) / 5 * 100, 100);
+              const avg = s.avg;
+              const up = avg != null && avg > 0;
+              const color = avg == null ? '#64748b' : up ? '#ff4d4f' : avg < 0 ? '#00c48c' : '#64748b';
+              const barPct = avg != null ? Math.min(Math.abs(avg) / 5 * 100, 100) : 0;
+              const idxVal = sectorIndexMap[s.name];
               return (
                 <div key={s.name}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
                       <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{s.name}</span>
+                      {idxVal > 0 && (
+                        <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                          {idxVal.toLocaleString()}
+                        </span>
+                      )}
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color }}>{up ? '+' : ''}{s.avg}%</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color }}>
+                      {avg == null ? '—' : `${up ? '+' : ''}${avg}%`}
+                    </span>
                   </div>
                   <div style={{ height: 4, background: 'var(--color-background-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${barPct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .5s' }} />
@@ -339,6 +371,9 @@ export default function Market() {
                 </div>
               );
             })}
+            <div style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
+              * 漲跌% 由代表個股平均估算
+            </div>
           </div>
         </div>
 

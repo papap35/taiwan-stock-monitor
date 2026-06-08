@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { api } from '../services/api';
 import { useStockStore } from '../stores/stockStore';
+import {
+  calcBollingerBands, calcVolumeMA, calcVolumeRatio, aggregateCandles,
+} from '../utils/portfolio';
 
 // ── 技術指標計算 ────────────────────────────────────────
 function calcMA(candles, period) {
@@ -78,6 +81,11 @@ const CHART_OPTS = (height) => ({
 const PERIODS = [{ label: '1M', months: 1 }, { label: '3M', months: 3 }, { label: '6M', months: 6 }, { label: '1Y', months: 12 }];
 const INDICATORS = ['OFF', 'KD', 'RSI', 'MACD'];
 const MAIN_TABS = ['K線', '法人籌碼', '融資融券', '基本面'];
+const CHART_PERIODS = [
+  { key: 'D', label: '日K' },
+  { key: 'W', label: '週K' },
+  { key: 'M', label: '月K' },
+];
 
 const fmtN = n => n == null ? '—' : n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
 const fmtColor = n => n > 0 ? '#ff4d4f' : n < 0 ? '#00c48c' : '#64748b';
@@ -96,14 +104,24 @@ export default function StockChart({ stock, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showMA, setShowMA] = useState({ ma5: true, ma20: true, ma60: false });
+  const [showBB, setShowBB] = useState(false);
   const [indicator, setIndicator] = useState('KD');
   const [mainTab, setMainTab] = useState('K線');
+  const [chartPeriod, setChartPeriod] = useState('D'); // 'D' | 'W' | 'M'
 
   const { quotes } = useStockStore();
   const q = quotes[stock.code];
   const price = q?.price ?? stock.price;
   const chgPct = q?.changePercent ?? stock.changePercent ?? 0;
   const chgColor = chgPct > 0 ? '#ff4d4f' : chgPct < 0 ? '#00c48c' : '#64748b';
+
+  // ── 根據週期聚合 K 線 ────────────────────────────────
+  const displayCandles = useMemo(() => {
+    if (!candles.length) return candles;
+    if (chartPeriod === 'W') return aggregateCandles(candles, 'weekly');
+    if (chartPeriod === 'M') return aggregateCandles(candles, 'monthly');
+    return candles;
+  }, [candles, chartPeriod]);
 
   // ── 資料載入 ────────────────────────────────────────
   const loadAll = useCallback(async (m) => {
@@ -128,7 +146,7 @@ export default function StockChart({ stock, onClose }) {
 
   // ── 主 K 線圖 ─────────────────────────────────────
   useEffect(() => {
-    if (!mainRef.current || candles.length === 0 || mainTab !== 'K線') return;
+    if (!mainRef.current || displayCandles.length === 0 || mainTab !== 'K線') return;
     if (mainChartRef.current) { mainChartRef.current.remove(); mainChartRef.current = null; }
 
     const chart = createChart(mainRef.current, CHART_OPTS(indicator === 'OFF' ? 340 : 240));
@@ -136,23 +154,47 @@ export default function StockChart({ stock, onClose }) {
 
     // 蠟燭
     const cs = chart.addSeries(CandlestickSeries, { upColor: '#ff4d4f', downColor: '#00c48c', borderUpColor: '#ff4d4f', borderDownColor: '#00c48c', wickUpColor: '#ff4d4f', wickDownColor: '#00c48c' });
-    cs.setData(candles);
+    cs.setData(displayCandles);
 
     // 成交量
     const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    vol.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(255,77,79,.4)' : 'rgba(0,196,140,.4)' })));
+    vol.setData(displayCandles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(255,77,79,.4)' : 'rgba(0,196,140,.4)' })));
+
+    // 成交量均線（MA5 / MA20）
+    const volMa5  = calcVolumeMA(displayCandles, 5);
+    const volMa20 = calcVolumeMA(displayCandles, 20);
+    if (volMa5.length) {
+      const vma5 = chart.addSeries(LineSeries, { color: 'rgba(245,158,11,.6)', lineWidth: 1, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      vma5.setData(volMa5.map(x => ({ time: x.time, value: x.value })));
+    }
+    if (volMa20.length) {
+      const vma20 = chart.addSeries(LineSeries, { color: 'rgba(59,130,246,.6)', lineWidth: 1, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      vma20.setData(volMa20.map(x => ({ time: x.time, value: x.value })));
+    }
 
     // MA 線
     const maColors = { ma5: '#f59e0b', ma20: '#3b82f6', ma60: '#8b5cf6' };
     const maPeriods = { ma5: 5, ma20: 20, ma60: 60 };
     Object.entries(showMA).forEach(([key, on]) => {
       if (!on) return;
-      const d = calcMA(candles, maPeriods[key]);
+      const d = calcMA(displayCandles, maPeriods[key]);
       if (!d.length) return;
       const s = chart.addSeries(LineSeries, { color: maColors[key], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       s.setData(d);
     });
+
+    // 布林通道（P1-4）
+    if (showBB && displayCandles.length >= 20) {
+      const bb = calcBollingerBands(displayCandles, 20, 2);
+      const bbOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+      const upperS = chart.addSeries(LineSeries, { ...bbOpts, color: 'rgba(168,85,247,.5)', lineStyle: 2 });
+      upperS.setData(bb.map(x => ({ time: x.time, value: x.upper })));
+      const midS   = chart.addSeries(LineSeries, { ...bbOpts, color: 'rgba(168,85,247,.3)', lineStyle: 3 });
+      midS.setData(bb.map(x => ({ time: x.time, value: x.mid })));
+      const lowerS = chart.addSeries(LineSeries, { ...bbOpts, color: 'rgba(168,85,247,.5)', lineStyle: 2 });
+      lowerS.setData(bb.map(x => ({ time: x.time, value: x.lower })));
+    }
 
     chart.timeScale().fitContent();
     mainChartRef.current = chart;
@@ -160,11 +202,11 @@ export default function StockChart({ stock, onClose }) {
     const ro = new ResizeObserver(() => mainChartRef.current?.applyOptions({ width: mainRef.current?.clientWidth }));
     ro.observe(mainRef.current);
     return () => { ro.disconnect(); mainChartRef.current?.remove(); mainChartRef.current = null; };
-  }, [candles, showMA, indicator, mainTab]);
+  }, [displayCandles, showMA, showBB, indicator, mainTab]);
 
   // ── 副圖（KD / RSI / MACD）────────────────────────
   useEffect(() => {
-    if (!subRef.current || candles.length === 0 || indicator === 'OFF' || mainTab !== 'K線') {
+    if (!subRef.current || displayCandles.length === 0 || indicator === 'OFF' || mainTab !== 'K線') {
       if (subChartRef.current) { subChartRef.current.remove(); subChartRef.current = null; }
       return;
     }
@@ -173,7 +215,7 @@ export default function StockChart({ stock, onClose }) {
     const chart = createChart(subRef.current, { ...CHART_OPTS(100), timeScale: { visible: false } });
 
     if (indicator === 'KD') {
-      const kd = calcKD(candles);
+      const kd = calcKD(displayCandles);
       const kS = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
       const dS = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
       kS.setData(kd.map(x => ({ time: x.time, value: x.k })));
@@ -186,7 +228,7 @@ export default function StockChart({ stock, onClose }) {
     }
 
     if (indicator === 'RSI') {
-      const rsi = calcRSI(candles);
+      const rsi = calcRSI(displayCandles);
       const s = chart.addSeries(LineSeries, { color: '#a78bfa', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
       s.setData(rsi);
       const r70 = chart.addSeries(LineSeries, { color: 'rgba(255,77,79,.25)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -196,7 +238,7 @@ export default function StockChart({ stock, onClose }) {
     }
 
     if (indicator === 'MACD') {
-      const macd = calcMACD(candles);
+      const macd = calcMACD(displayCandles);
       const histS = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
       histS.setData(macd.filter(x => x.hist != null).map(x => ({ time: x.time, value: x.hist, color: x.hist >= 0 ? 'rgba(255,77,79,.7)' : 'rgba(0,196,140,.7)' })));
       const macdS = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
@@ -218,7 +260,7 @@ export default function StockChart({ stock, onClose }) {
     const ro = new ResizeObserver(() => subChartRef.current?.applyOptions({ width: subRef.current?.clientWidth }));
     ro.observe(subRef.current);
     return () => { ro.disconnect(); subChartRef.current?.remove(); subChartRef.current = null; };
-  }, [candles, indicator, mainTab]);
+  }, [displayCandles, indicator, mainTab]);
 
   // ESC 關閉
   useEffect(() => {
@@ -228,13 +270,16 @@ export default function StockChart({ stock, onClose }) {
   }, [onClose]);
 
   // ── 統計摘要 ──────────────────────────────────────
-  const stats = candles.length > 0 ? (() => {
-    const last = candles[candles.length - 1];
-    const high = Math.max(...candles.map(c => c.high));
-    const low = Math.min(...candles.map(c => c.low));
-    const ma5v = candles.length >= 5 ? +(candles.slice(-5).reduce((s, c) => s + c.close, 0) / 5).toFixed(2) : null;
-    const ma20v = candles.length >= 20 ? +(candles.slice(-20).reduce((s, c) => s + c.close, 0) / 20).toFixed(2) : null;
-    return { last, high, low, ma5v, ma20v };
+  const stats = displayCandles.length > 0 ? (() => {
+    const last  = displayCandles[displayCandles.length - 1];
+    const high  = Math.max(...displayCandles.map(c => c.high));
+    const low   = Math.min(...displayCandles.map(c => c.low));
+    const ma5v  = displayCandles.length >= 5  ? +(displayCandles.slice(-5).reduce((s, c) => s + c.close, 0) / 5).toFixed(2)   : null;
+    const ma20v = displayCandles.length >= 20 ? +(displayCandles.slice(-20).reduce((s, c) => s + c.close, 0) / 20).toFixed(2) : null;
+    const volRatio = calcVolumeRatio(displayCandles, 5);
+    const bb = (showBB && displayCandles.length >= 20) ? calcBollingerBands(displayCandles, 20, 2) : null;
+    const latestBB = bb?.length ? bb[bb.length - 1] : null;
+    return { last, high, low, ma5v, ma20v, volRatio, latestBB };
   })() : null;
 
   // ── 最新法人資料 ───────────────────────────────────
@@ -268,7 +313,7 @@ export default function StockChart({ stock, onClose }) {
             </div>
           </div>
 
-          {/* 期間 */}
+          {/* 資料期間 */}
           <div style={{ display: 'flex', gap: 3 }}>
             {PERIODS.map(p => (
               <button key={p.months} onClick={() => setMonths(p.months)} style={{ padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: 600, border: `1px solid ${months === p.months ? 'var(--color-brand)' : '#1e2d40'}`, background: months === p.months ? 'rgba(59,130,246,.15)' : 'transparent', color: months === p.months ? 'var(--color-brand)' : '#64748b', cursor: 'pointer' }}>
@@ -277,7 +322,18 @@ export default function StockChart({ stock, onClose }) {
             ))}
           </div>
 
-          {/* MA 開關（只在K線tab顯示） */}
+          {/* 週期切換（日K / 週K / 月K） */}
+          {mainTab === 'K線' && (
+            <div style={{ display: 'flex', gap: 2, borderLeft: '1px solid #1e2d40', paddingLeft: 8 }}>
+              {CHART_PERIODS.map(p => (
+                <button key={p.key} onClick={() => setChartPeriod(p.key)} style={{ padding: '2px 8px', borderRadius: 3, fontSize: 10, fontWeight: 600, border: `1px solid ${chartPeriod === p.key ? '#a78bfa' : '#1e2d40'}`, background: chartPeriod === p.key ? 'rgba(167,139,250,.15)' : 'transparent', color: chartPeriod === p.key ? '#a78bfa' : '#64748b', cursor: 'pointer' }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* MA 開關 + BB 開關（只在K線tab顯示） */}
           {mainTab === 'K線' && (
             <div style={{ display: 'flex', gap: 4 }}>
               {[['ma5','MA5','#f59e0b'],['ma20','MA20','#3b82f6'],['ma60','MA60','#8b5cf6']].map(([k, l, c]) => (
@@ -285,6 +341,9 @@ export default function StockChart({ stock, onClose }) {
                   {l}
                 </button>
               ))}
+              <button onClick={() => setShowBB(p => !p)} style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700, border: `1px solid ${showBB ? '#a78bfa' : '#1e2d40'}`, background: showBB ? 'rgba(167,139,250,.15)' : 'transparent', color: showBB ? '#a78bfa' : '#475569', cursor: 'pointer', opacity: showBB ? 1 : .5 }}>
+                BB
+              </button>
             </div>
           )}
 
@@ -299,6 +358,8 @@ export default function StockChart({ stock, onClose }) {
               { label: `${months}M低`, val: stats.low?.toFixed(stats.low >= 100 ? 1 : 2),  color: '#00c48c' },
               { label: 'MA5',  val: stats.ma5v,  color: '#f59e0b', sub: stats.ma5v  ? (price > stats.ma5v  ? '站上' : '跌破') : '' },
               { label: 'MA20', val: stats.ma20v, color: '#3b82f6', sub: stats.ma20v ? (price > stats.ma20v ? '站上' : '跌破') : '' },
+              ...(stats.volRatio != null ? [{ label: '量比', val: stats.volRatio.toFixed(2), color: stats.volRatio > 2 ? '#ff4d4f' : stats.volRatio < 0.5 ? '#00c48c' : '#94a3b8', sub: stats.volRatio > 2 ? '放量' : stats.volRatio < 0.5 ? '縮量' : '量平' }] : []),
+              ...(stats.latestBB ? [{ label: 'BB 寬', val: `${stats.latestBB.bandwidth.toFixed(1)}%`, color: '#a78bfa', sub: `上${stats.latestBB.upper} 下${stats.latestBB.lower}` }] : []),
               ...(latestInst ? [
                 { label: '外資(張)', val: fmtN(Math.round(latestInst.fiNet / 1000)), color: fmtColor(latestInst.fiNet), sub: '近1日' },
                 { label: '投信(張)', val: fmtN(Math.round(latestInst.itNet / 1000)), color: fmtColor(latestInst.itNet), sub: '近1日' },
