@@ -2,9 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 import StockChart from './StockChart';
+import {
+  migrateLots, lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct,
+  calcPortfolio, fmtPct, fmtAmt, fmtShares,
+} from '../utils/portfolio';
 
 // ─────────────────────────────────────────────────────────────
-//  資料結構說明
+//  資料結構說明（詳見 src/utils/portfolio.js）
 //  WatchlistItem: { code, name, strategy, target, stopLoss, notes, lots[] }
 //  Lot:           { id, date, shares, oddLotShares, cost, note }
 // ─────────────────────────────────────────────────────────────
@@ -16,53 +20,8 @@ const STRATEGIES = [
 ];
 const STRATEGY_MAP = Object.fromEntries(STRATEGIES.map(s => [s.value, s]));
 
-// ── 向下相容：把舊格式（cost/shares）轉為 lots[] ────────────
-function migrateLots(item) {
-  if (Array.isArray(item.lots) && item.lots.length > 0) return item.lots;
-  // 舊格式：單一成本 → 自動轉換為第一筆買入記錄
-  if (item.cost || item.shares || item.oddLotShares) {
-    return [{
-      id: `legacy_${item.code}`,
-      date: '',
-      shares:       item.shares       ?? 0,
-      oddLotShares: item.oddLotShares ?? 0,
-      cost:         item.cost         ?? 0,
-      note: '（由舊版自動轉入）',
-    }];
-  }
-  return [];
-}
-
-// ── Lot 輔助計算 ─────────────────────────────────────────────
-export const lotShares     = (lot) => (lot.shares ?? 0) * 1000 + (lot.oddLotShares ?? 0);
-export const lotCostTotal  = (lot) => lot.cost * lotShares(lot);
-export const lotMktVal     = (lot, price) => price * lotShares(lot);
-export const lotPnlAmt     = (lot, price) => (price - lot.cost) * lotShares(lot);
-export const lotPnlPct     = (lot, price) => lot.cost ? (price / lot.cost - 1) * 100 : 0;
-
-// ── 個股整體統計 ─────────────────────────────────────────────
-export function calcPortfolio(item, price) {
-  const lots = migrateLots(item);
-  const totalShares = lots.reduce((s, l) => s + lotShares(l), 0);
-  const totalCost   = lots.reduce((s, l) => s + lotCostTotal(l), 0);
-  const avgCost     = totalShares > 0 ? totalCost / totalShares : 0;
-  // price=0 表示尚無報價，不應計算損益（否則會顯示 -100%）
-  const hasPrice    = price > 0;
-  const mktVal      = hasPrice ? price * totalShares : 0;
-  const pnlAmt      = (hasPrice && totalCost > 0) ? mktVal - totalCost : null;
-  const pnlPct      = (hasPrice && totalCost > 0) ? (mktVal / totalCost - 1) * 100 : null;
-  return { lots, totalShares, totalCost, avgCost, mktVal, pnlAmt, pnlPct };
-}
-
-// ── 格式化 ───────────────────────────────────────────────────
-const fmt2   = (n) => typeof n === 'number' ? n.toFixed(2) : '—';
-const fmtPct = (n, sign = true) => n == null ? '—' : `${sign && n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-const fmtAmt = (n) => n == null ? '—' : `${n >= 0 ? '+' : ''}${Math.round(n).toLocaleString()}`;
-const fmtShares = (shares, oddLot) => {
-  const l = parseInt(shares) || 0, o = parseInt(oddLot) || 0;
-  if (!l && !o) return '—';
-  return [l && `${l}張`, o && `${o}股`].filter(Boolean).join('+');
-};
+// Re-export for backward compat（測試與其他元件可從此處取得）
+export { lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct, calcPortfolio };
 
 // ─────────────────────────────────────────────────────────────
 //  Markdown 渲染（每日簡報用）

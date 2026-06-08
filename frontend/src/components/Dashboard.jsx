@@ -12,10 +12,10 @@
  *   alerts       警報動態
  *   institutional 法人動向
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
-import { calcPortfolio, migrateLots, lotShares, lotCostTotal } from './Watchlist.jsx';
+import { calcPortfolio, fmtPct, fmtAmt } from '../utils/portfolio';
 
 // ── localStorage helpers ──────────────────────────────────
 const LS_KEY = 'dashboard_panels';
@@ -54,10 +54,6 @@ const SECTORS = [
   { name: '電信', codes: ['2412', '4904'] },
   { name: '航運', codes: ['2609', '2603', '2615'] },
 ];
-
-// ── 工具函式 ──────────────────────────────────────────────
-const fmtPct = (n, sign = true) => n == null ? '—' : `${sign && n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-const fmtAmt = (n) => n == null ? '—' : `${n >= 0 ? '+' : ''}${Math.round(n).toLocaleString()}`;
 
 function loadPanels() {
   try { return { ...DEFAULT_PANELS, ...JSON.parse(localStorage.getItem(LS_KEY) || '{}') }; }

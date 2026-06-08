@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { lotShares, lotCostTotal, lotPnlPct, lotPnlAmt, calcPortfolio } from '../Watchlist.jsx';
+import { lotShares, lotCostTotal, lotPnlPct, lotPnlAmt, calcPortfolio } from '../../utils/portfolio.js';
 
 // ─── lotShares ───────────────────────────────────────────────
 describe('lotShares', () => {
