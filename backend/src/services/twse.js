@@ -109,13 +109,16 @@ async function fetchTaiex() {
     const price = parseFloat(t.z) || parseFloat(t.y) || 0;
     const prevClose = parseFloat(t.y) || 0;
 
+    // t.v 對大盤（tse_t00.tw）單位為「百萬元」，除以 100 換算為「億元」
+    const volumeRaw = parseInt(t.v) || 0;
     const result = {
       value: price,
       prevClose,
       open: parseFloat(t.o) || 0,
       high: parseFloat(t.h) || 0,
       low: parseFloat(t.l) || 0,
-      volume: parseInt(t.v) || 0,
+      volumeRaw,                            // 原始值（百萬元）
+      volume: Math.round(volumeRaw / 100),  // 億元
       change: +(price - prevClose).toFixed(2),
       changePercent: prevClose ? +((price / prevClose - 1) * 100).toFixed(2) : 0,
       time: t.t || null,
@@ -246,6 +249,9 @@ async function fetchQuote(code) {
 
 /**
  * 取得市場廣度（漲/跌/平/漲停/跌停 家數）
+ *
+ * 盤中（09:00-13:30）：使用 TWSE MI_INDEX 即時漲跌家數（含上市）
+ * 盤後：使用 STOCK_DAY_ALL 收盤資料計算
  */
 async function fetchMarketBreadth() {
   const cacheKey = 'breadth';
@@ -253,20 +259,69 @@ async function fetchMarketBreadth() {
   if (cached) return cached;
 
   try {
+    // ── 盤中：MI_INDEX 有即時上漲/下跌/平盤/漲停/跌停家數 ──
+    if (isTradingHours()) {
+      const url = 'https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX?response=json';
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+      const data = await res.json();
+
+      // MI_INDEX 包含多種指數列，其中代號 'MI_IDX' 開頭或 '發行量加權股價指數' 那列含有廣度
+      // 另有一份 MI_INDEX20 提供漲跌家數
+      // 改抓專用的漲跌家數 API
+      const breadthUrl = 'https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&type=MS';
+      const breadthRes = await fetch(breadthUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+      const breadthData = await breadthRes.json();
+
+      if (breadthData.stat === 'OK' && breadthData.data) {
+        // 欄位：類別 上漲 下跌 未漲跌 漲停 跌停
+        // 取上市（TSE）那列，通常為 index 0 或 label='上市'
+        let up = 0, down = 0, flat = 0, limitUp = 0, limitDown = 0;
+        const toN = s => parseInt(String(s).replace(/,/g, '')) || 0;
+        for (const row of breadthData.data) {
+          if (!row[0] || !/上市/.test(row[0])) continue;
+          up       = toN(row[1]);
+          down     = toN(row[2]);
+          flat     = toN(row[3]);
+          limitUp  = toN(row[4]);
+          limitDown = toN(row[5]);
+          break;
+        }
+        // fallback：如果沒有上市列，加總所有列
+        if (!up && !down) {
+          for (const row of breadthData.data) {
+            const toNx = s => parseInt(String(s || '0').replace(/,/g, '')) || 0;
+            up       += toNx(row[1]);
+            down     += toNx(row[2]);
+            flat     += toNx(row[3]);
+            limitUp  += toNx(row[4]);
+            limitDown += toNx(row[5]);
+          }
+        }
+        if (up || down || flat) {
+          const result = { up, down, flat, limitUp, limitDown, total: up + down + flat, source: 'realtime' };
+          cache.set(cacheKey, result, 30); // 盤中 30 秒快取
+          return result;
+        }
+      }
+      // 若 MI_INDEX type=MS 失敗，fall through 到 STOCK_DAY_ALL
+    }
+
+    // ── 盤後 / fallback：STOCK_DAY_ALL 收盤資料 ──
     const daily = await fetchDailyAll();
     let up = 0, down = 0, flat = 0, limitUp = 0, limitDown = 0;
     Object.values(daily).forEach(s => {
-      if (s.changePercent >= 9.9)       { limitUp++; up++; }
+      if (s.changePercent >= 9.9)       { limitUp++;  up++; }
       else if (s.changePercent > 0.05)  up++;
       else if (s.changePercent <= -9.9) { limitDown++; down++; }
       else if (s.changePercent < -0.05) down++;
       else flat++;
     });
-    const result = { up, down, flat, limitUp, limitDown, total: up + down + flat };
-    cache.set(cacheKey, result, 60);
+    const result = { up, down, flat, limitUp, limitDown, total: up + down + flat, source: 'daily' };
+    cache.set(cacheKey, result, isTradingHours() ? 30 : 120);
     return result;
   } catch (err) {
-    return { up: 0, down: 0, flat: 0, limitUp: 0, limitDown: 0, total: 0 };
+    console.error('[TWSE] fetchMarketBreadth error:', err.message);
+    return cache.get(cacheKey) || { up: 0, down: 0, flat: 0, limitUp: 0, limitDown: 0, total: 0, source: 'error' };
   }
 }
 
