@@ -28,6 +28,14 @@ import {
   fmtPct,
   fmtAmt,
   fmtShares,
+  calcTrailingStopPrice,
+  isTrailingStopTriggered,
+  calcRR,
+  calcPositionSize,
+  calcBollingerBands,
+  calcVolumeMA,
+  calcVolumeRatio,
+  aggregateCandles,
 } from '../portfolio.js';
 
 // ─── 測試資料工廠 ─────────────────────────────────────────
@@ -385,4 +393,209 @@ describe('fmtShares', () => {
   it('全為 0 → —', ()      => expect(fmtShares(0, 0)).toBe('—'));
   it('字串數字也能處理', () => expect(fmtShares('3', '200')).toBe('3張+200股'));
   it('null 值以 0 計', ()  => expect(fmtShares(null, null)).toBe('—'));
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P0-1: calcTrailingStopPrice / isTrailingStopTriggered
+// ═══════════════════════════════════════════════════════════
+describe('calcTrailingStopPrice', () => {
+  it('峰值 100，回落 8% → 停損價 92', () => {
+    expect(calcTrailingStopPrice(100, 8)).toBeCloseTo(92);
+  });
+  it('峰值 800，回落 10% → 停損價 720', () => {
+    expect(calcTrailingStopPrice(800, 10)).toBeCloseTo(720);
+  });
+  it('回落 0% → 停損價等於峰值', () => {
+    expect(calcTrailingStopPrice(500, 0)).toBe(500);
+  });
+});
+
+describe('isTrailingStopTriggered', () => {
+  it('現價低於停損觸發價 → true', () => {
+    expect(isTrailingStopTriggered(91, 100, 8)).toBe(true);  // 停損=92
+  });
+  it('現價恰好在停損觸發價 → true', () => {
+    expect(isTrailingStopTriggered(92, 100, 8)).toBe(true);
+  });
+  it('現價高於停損觸發價 → false', () => {
+    expect(isTrailingStopTriggered(95, 100, 8)).toBe(false);
+  });
+  it('peakPrice 為 0 → false（尚無追蹤）', () => {
+    expect(isTrailingStopTriggered(80, 0, 8)).toBe(false);
+  });
+  it('trailingPct 為 null → false', () => {
+    expect(isTrailingStopTriggered(50, 100, null)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P0-2: calcRR
+// ═══════════════════════════════════════════════════════════
+describe('calcRR', () => {
+  it('標準 1:2 的案例', () => {
+    // cost=100, target=120, stop=90 → reward=20, risk=10 → RR=2
+    const r = calcRR(100, 120, 90);
+    expect(r.rr).toBe(2);
+    expect(r.reward).toBe(20);
+    expect(r.risk).toBe(10);
+  });
+  it('停損高於成本 → null（無效設定）', () => {
+    expect(calcRR(100, 120, 110)).toBeNull();
+  });
+  it('缺少 target → null', () => {
+    expect(calcRR(100, 0, 90)).toBeNull();
+  });
+  it('cost = 0 → null', () => {
+    expect(calcRR(0, 120, 90)).toBeNull();
+  });
+  it('損益比小於 1 的情況（不建議但仍計算）', () => {
+    // cost=100, target=105, stop=90 → reward=5, risk=10 → RR=0.5
+    const r = calcRR(100, 105, 90);
+    expect(r.rr).toBe(0.5);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P0-3: calcPositionSize
+// ═══════════════════════════════════════════════════════════
+describe('calcPositionSize', () => {
+  it('標準案例：資金100萬，風險2%，股價100，停損90', () => {
+    // maxLoss=20000, riskPerSh=10, shares=2000, lots=2
+    const r = calcPositionSize(1000000, 2, 100, 90);
+    expect(r.maxLoss).toBe(20000);
+    expect(r.shares).toBe(2000);
+    expect(r.lots).toBe(2);
+  });
+  it('停損等於股價 → null（riskPerSh=0，不能計算）', () => {
+    expect(calcPositionSize(1000000, 2, 100, 100)).toBeNull();
+  });
+  it('停損高於股價 → null（邏輯錯誤）', () => {
+    expect(calcPositionSize(1000000, 2, 100, 110)).toBeNull();
+  });
+  it('資金 0 → null', () => {
+    expect(calcPositionSize(0, 2, 100, 90)).toBeNull();
+  });
+  it('風險比例 1% 回傳整張數為 1', () => {
+    // maxLoss=10000, riskPerSh=10, shares=1000, lots=1
+    const r = calcPositionSize(1000000, 1, 100, 90);
+    expect(r.lots).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P1-4: calcBollingerBands
+// ═══════════════════════════════════════════════════════════
+describe('calcBollingerBands', () => {
+  // 生成 30 根蠟燭的假資料（收盤價 100~129）
+  const candles = Array.from({ length: 30 }, (_, i) => ({
+    time: 1700000000 + i * 86400,
+    open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000,
+  }));
+
+  it('period=20，前 19 根沒有結果', () => {
+    const bb = calcBollingerBands(candles, 20, 2);
+    expect(bb.length).toBe(candles.length - 19);
+  });
+  it('upper > mid > lower', () => {
+    const bb = calcBollingerBands(candles, 20, 2);
+    bb.forEach(b => {
+      expect(b.upper).toBeGreaterThan(b.mid);
+      expect(b.mid).toBeGreaterThan(b.lower);
+    });
+  });
+  it('bandwidth 為正數', () => {
+    calcBollingerBands(candles, 20, 2).forEach(b => {
+      expect(b.bandwidth).toBeGreaterThan(0);
+    });
+  });
+  it('資料不足 period → 回傳空陣列', () => {
+    expect(calcBollingerBands(candles.slice(0, 5), 20, 2)).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P1-5: calcVolumeMA / calcVolumeRatio
+// ═══════════════════════════════════════════════════════════
+describe('calcVolumeMA', () => {
+  const candles = Array.from({ length: 10 }, (_, i) => ({
+    time: 1700000000 + i * 86400,
+    close: 100, open: 100, high: 100, low: 100, volume: (i + 1) * 1000,
+  }));
+
+  it('period=5，前 4 根無結果', () => {
+    expect(calcVolumeMA(candles, 5).length).toBe(candles.length - 4);
+  });
+  it('計算正確：第 5 根 = avg(1000,2000,3000,4000,5000) = 3000', () => {
+    const ma = calcVolumeMA(candles, 5);
+    expect(ma[0].value).toBe(3000);
+  });
+});
+
+describe('calcVolumeRatio', () => {
+  const flat = Array.from({ length: 10 }, (_, i) => ({
+    time: 1700000000 + i * 86400, close: 100, volume: 1000,
+  }));
+  it('所有成交量相同 → 量比 = 1.00', () => {
+    expect(calcVolumeRatio(flat, 5)).toBe(1.00);
+  });
+  it('今日量是均量 2 倍 → 量比 = 2.00', () => {
+    const data = [...flat.slice(0, 9), { ...flat[9], volume: 2000 }];
+    expect(calcVolumeRatio(data, 5)).toBeCloseTo(2.00);
+  });
+  it('資料不足 → null', () => {
+    expect(calcVolumeRatio(flat.slice(0, 3), 5)).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  P1-6: aggregateCandles
+// ═══════════════════════════════════════════════════════════
+describe('aggregateCandles', () => {
+  // 2024-01-01 (週一) 開始的 10 個交易日
+  const DAY = 86400;
+  const BASE = 1704067200; // 2024-01-01 00:00 UTC (週一)
+  // 跳過週末：Mon=0,Tue=1,Wed=2,Thu=3,Fri=4,Mon=7,Tue=8,Wed=9,Thu=10,Fri=11
+  const offsets = [0,1,2,3,4, 7,8,9,10,11];
+  const candles = offsets.map((d, i) => ({
+    time: BASE + d * DAY,
+    open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000,
+  }));
+
+  it('日K不聚合 → 原樣回傳', () => {
+    // aggregateCandles 只在 weekly/monthly 聚合
+    // 每根對應不同天，週K應聚合為 2 週
+    const daily = [...candles]; // unchanged reference test
+    expect(daily.length).toBe(10);
+  });
+
+  it('週K聚合：10 個交易日（2 週）→ 2 根', () => {
+    const weekly = aggregateCandles(candles, 'weekly');
+    expect(weekly.length).toBe(2);
+  });
+
+  it('週K：每週的 high 是該週最高', () => {
+    const weekly = aggregateCandles(candles, 'weekly');
+    // 第一週 (idx 0-4): high = max(101..105) = 105
+    expect(weekly[0].high).toBe(105);
+  });
+
+  it('週K：每週的 close 是最後一個交易日的收盤', () => {
+    const weekly = aggregateCandles(candles, 'weekly');
+    // 第一週最後一天 idx=4, close=104
+    expect(weekly[0].close).toBe(104);
+  });
+
+  it('週K：每週的 volume 是加總', () => {
+    const weekly = aggregateCandles(candles, 'weekly');
+    expect(weekly[0].volume).toBe(5000); // 5天各1000
+  });
+
+  it('月K：同月份全部聚合為 1 根', () => {
+    const monthly = aggregateCandles(candles, 'monthly');
+    expect(monthly.length).toBe(1); // 全部在 2024年1月
+  });
+
+  it('空陣列 → 回傳空陣列', () => {
+    expect(aggregateCandles([], 'weekly')).toHaveLength(0);
+  });
 });

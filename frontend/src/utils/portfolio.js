@@ -132,6 +132,165 @@ export function calcTotalPortfolio(watchlist, quotes) {
   return { rows, totalMkt, totalCost, totalPnlAmt, totalPnlPct };
 }
 
+// ── P0-1: 動態停損計算 ───────────────────────────────────
+
+/**
+ * 計算動態停損觸發價。
+ * @param {number} peakPrice  追蹤高點
+ * @param {number} trailingPct  回檔觸發百分比（例如 8 代表 8%）
+ * @returns {number}
+ */
+export function calcTrailingStopPrice(peakPrice, trailingPct) {
+  return peakPrice * (1 - trailingPct / 100);
+}
+
+/**
+ * 檢查動態停損是否觸發。
+ * @param {number} currentPrice
+ * @param {number} peakPrice
+ * @param {number} trailingPct
+ * @returns {boolean}
+ */
+export function isTrailingStopTriggered(currentPrice, peakPrice, trailingPct) {
+  if (!peakPrice || !trailingPct) return false;
+  return currentPrice <= calcTrailingStopPrice(peakPrice, trailingPct);
+}
+
+// ── P0-2: 風險/報酬比 ────────────────────────────────────
+
+/**
+ * 計算風險報酬比（Risk/Reward Ratio）。
+ * @param {number} cost      成本（進場價）
+ * @param {number} target    目標價
+ * @param {number} stopLoss  停損價
+ * @returns {{ rr: number, reward: number, risk: number } | null}
+ */
+export function calcRR(cost, target, stopLoss) {
+  if (!cost || !target || !stopLoss || cost <= 0) return null;
+  const reward = target - cost;
+  const risk   = cost - stopLoss;
+  if (risk <= 0) return null;
+  return {
+    rr:     +(reward / risk).toFixed(2),
+    reward: +reward.toFixed(2),
+    risk:   +risk.toFixed(2),
+  };
+}
+
+// ── P0-3: 部位規模計算 ───────────────────────────────────
+
+/**
+ * 計算建議買入股數（固定風險比例法）。
+ * @param {number} capital    總資金（元）
+ * @param {number} riskPct    單筆最大風險比例（例如 2 代表 2%）
+ * @param {number} price      股價
+ * @param {number} stopLoss   停損價
+ * @returns {{ shares: number, lots: number, maxLoss: number } | null}
+ */
+export function calcPositionSize(capital, riskPct, price, stopLoss) {
+  if (!capital || !riskPct || !price || !stopLoss || price <= stopLoss) return null;
+  const maxLoss   = capital * (riskPct / 100);
+  const riskPerSh = price - stopLoss;
+  const shares    = Math.floor(maxLoss / riskPerSh);
+  const lots      = Math.floor(shares / 1000);
+  return { shares, lots, maxLoss: +maxLoss.toFixed(0) };
+}
+
+// ── P1-4: 布林通道 ───────────────────────────────────────
+
+/**
+ * 計算布林通道（Bollinger Bands）。
+ * @param {{ time, close }[]} candles
+ * @param {number} period    MA 週期（預設 20）
+ * @param {number} mult      標準差倍數（預設 2）
+ * @returns {{ time, upper, mid, lower, bandwidth }[]}
+ */
+export function calcBollingerBands(candles, period = 20, mult = 2) {
+  return candles.map((c, i) => {
+    if (i < period - 1) return null;
+    const slice = candles.slice(i - period + 1, i + 1).map(x => x.close);
+    const mean  = slice.reduce((s, v) => s + v, 0) / period;
+    const variance = slice.reduce((s, v) => s + (v - mean) ** 2, 0) / period;
+    const sd    = Math.sqrt(variance);
+    const upper = +(mean + mult * sd).toFixed(2);
+    const lower = +(mean - mult * sd).toFixed(2);
+    const mid   = +mean.toFixed(2);
+    return { time: c.time, upper, mid, lower, bandwidth: +((upper - lower) / mid * 100).toFixed(2) };
+  }).filter(Boolean);
+}
+
+// ── P1-5: 成交量均線 ─────────────────────────────────────
+
+/**
+ * 計算成交量移動平均。
+ * @param {{ time, volume }[]} candles
+ * @param {number} period
+ * @returns {{ time, value }[]}
+ */
+export function calcVolumeMA(candles, period) {
+  return candles.map((c, i) => {
+    if (i < period - 1) return null;
+    const avg = candles.slice(i - period + 1, i + 1).reduce((s, x) => s + x.volume, 0) / period;
+    return { time: c.time, value: +avg.toFixed(0) };
+  }).filter(Boolean);
+}
+
+/**
+ * 計算量比（今日量 / 近 N 日均量）。
+ * @param {{ volume }[]} candles
+ * @param {number} period
+ * @returns {number | null}
+ */
+export function calcVolumeRatio(candles, period = 5) {
+  if (candles.length < period + 1) return null;
+  const todayVol = candles[candles.length - 1].volume;
+  const avgVol   = candles.slice(-period - 1, -1).reduce((s, c) => s + c.volume, 0) / period;
+  return avgVol > 0 ? +(todayVol / avgVol).toFixed(2) : null;
+}
+
+// ── P1-6: 多週期聚合 ─────────────────────────────────────
+
+/**
+ * 將日K蠟燭聚合為週K或月K。
+ * @param {{ time, open, high, low, close, volume }[]} candles  日K（time 為 Unix 秒）
+ * @param {'weekly' | 'monthly'} period
+ * @returns {{ time, open, high, low, close, volume }[]}
+ */
+export function aggregateCandles(candles, period) {
+  if (!candles.length) return [];
+  const getKey = (ts) => {
+    const d = new Date(ts * 1000);
+    if (period === 'weekly') {
+      // 以週一為起點的週序號
+      const day = d.getDay() || 7; // 0=Sun → 7
+      const mon = new Date(d);
+      mon.setDate(d.getDate() - day + 1);
+      return `${mon.getFullYear()}-W${String(Math.ceil((mon.getDate()) / 7)).padStart(2,'0')}-${mon.getMonth()}`;
+    }
+    // monthly
+    return `${d.getFullYear()}-${d.getMonth()}`;
+  };
+
+  const groups = new Map();
+  const order  = [];
+
+  for (const c of candles) {
+    const key = getKey(c.time);
+    if (!groups.has(key)) {
+      groups.set(key, { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume });
+      order.push(key);
+    } else {
+      const g = groups.get(key);
+      g.high   = Math.max(g.high, c.high);
+      g.low    = Math.min(g.low,  c.low);
+      g.close  = c.close;  // 最後一個交易日收盤
+      g.volume += c.volume;
+    }
+  }
+
+  return order.map(k => groups.get(k));
+}
+
 // ── 格式化工具 ────────────────────────────────────────────
 
 /**
