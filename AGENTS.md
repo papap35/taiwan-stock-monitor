@@ -9,8 +9,9 @@
 
 1. [寫程式的原則](#1-寫程式的原則)
 2. [測試的原則](#2-測試的原則)
-3. [Commit Code 的原則](#3-commit-code-的原則)
-4. [判讀與更新 SPEC.md 的原則](#4-判讀與更新-specmd-的原則)
+3. [開發流程原則（Branch → Commit → PR）](#3-開發流程原則branch--commit--pr)
+4. [Commit Code 的原則（Branch 上的 commit）](#4-commit-code-的原則branch-上的-commit)
+5. [判讀與更新 SPEC.md 的原則](#5-判讀與更新-specmd-的原則)
 
 ---
 
@@ -173,15 +174,103 @@ cd frontend && npm run test:watch
 
 ---
 
-## 3. Commit Code 的原則
+## 3. 開發流程原則（Branch → Commit → PR）
 
-### 3.1 Commit 時機
+### 3.0 完整開發流程（必須遵守）
+
+每一個需求（新功能、bug fix、重構）都必須走完以下流程，**禁止直接在 main 上開發**：
+
+```
+1. 確認目前在 main，且 main 是最新的
+   git checkout main && git pull
+
+2. 從 main 建立新 branch（命名規則見下方）
+   git checkout -b <type>/<scope>-<簡述>
+
+3. 在 branch 上開發，分批 commit（每個 commit 一件事）
+
+4. 開發完畢，執行自我 review（見 3.5）
+
+5. 建立 PR（gh pr create），並等待 review 後 merge
+```
+
+**Branch 命名規則：**
+
+| Prefix     | 用途                         | 範例                              |
+| ---------- | ---------------------------- | --------------------------------- |
+| `feat/`    | 新功能                       | `feat/stockchart-bollinger-bands` |
+| `fix/`     | Bug 修正                     | `fix/dashboard-volume-display`    |
+| `refactor/`| 重構                         | `refactor/portfolio-utils-split`  |
+| `test/`    | 補測試                       | `test/portfolio-calc-coverage`    |
+| `docs/`    | 文件更新                     | `docs/agents-md-workflow`         |
+| `chore/`   | 依賴、工具、CI 等雜務        | `chore/update-vite-config`        |
+
+---
+
+### 3.5 PR 建立前的自我 Review 流程
+
+在執行 `gh pr create` **之前**，必須完成以下自我 review：
+
+#### Step 1：確認 diff 範圍合理
+
+```bash
+git diff main...HEAD --stat          # 確認改動範圍符合需求
+git diff main...HEAD                 # 逐行確認沒有意外改動
+```
+
+#### Step 2：逐項清單檢查
+
+```
+□ 所有改動都是本次需求的範疇，沒有夾帶不相關的修改
+□ 沒有 console.log / debugger 遺留
+□ 沒有 TODO 尚未處理（或已標記在 SPEC.md / issue）
+□ 每一個修改過的計算邏輯，都能說明「改前有什麼問題、改後為什麼正確」
+□ 新函式有 JSDoc 說明（@param / @returns）
+□ npm test 通過（0 failed）
+□ npm run build 無 error
+□ SPEC.md 狀態已同步更新（若適用）
+```
+
+#### Step 3：針對這次 PR 的 bug 風險評估
+
+自問以下問題，**若任何一題答「不確定」，必須補測試或補說明**：
+
+1. 這個改動影響到哪些現有功能？有沒有可能意外破壞它們？
+2. 有沒有邊界情況（null / 0 / 空陣列 / 非交易時段）沒有處理到？
+3. 資料來源的格式假設（API 欄位名稱、單位）是否已驗證？
+
+#### Step 4：撰寫 PR 描述
+
+PR 描述必須包含：
+
+```markdown
+## 需求背景
+（一句話說明為什麼要做這個改動）
+
+## 改動摘要
+- 改了什麼（列點）
+- 為什麼這樣改
+
+## 測試方式
+- [ ] 手動測試步驟 1
+- [ ] 手動測試步驟 2
+- [ ] npm test 通過
+
+## 已知風險 / 後續待辦
+（有的話列出來，沒有填「無」）
+```
+
+---
+
+## 4. Commit Code 的原則（Branch 上的 commit）
+
+### 4.1 Commit 時機
 
 - 一個 commit 只做一件事（功能、修 bug、重構、測試各自分開）。
 - 功能與對應測試**可以放在同一個 commit**（鼓勵一起提交）。
 - 不 commit 未完成的半成品（除非用 `WIP:` 前綴明確標示）。
 
-### 3.2 Commit Message 格式
+### 4.2 Commit Message 格式
 
 採用 Conventional Commits 格式：
 
@@ -215,7 +304,7 @@ refactor(portfolio): 將計算邏輯從 Watchlist.jsx 提取至 utils/portfolio.
 feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 ```
 
-### 3.3 commit 前檢查清單
+### 4.3 commit 前檢查清單
 
 ```
 □ npm test 通過（0 failed）
@@ -227,7 +316,7 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 □ SPEC.md 中對應功能的狀態已更新（若適用）
 ```
 
-### 3.4 不應該 commit 的東西
+### 4.4 不應該 commit 的東西
 
 - `node_modules/`（已在 .gitignore）
 - `.env` 或含有 API key 的檔案
@@ -237,14 +326,14 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 
 ---
 
-## 4. 判讀與更新 SPEC.md 的原則
+## 5. 判讀與更新 SPEC.md 的原則
 
-### 4.1 SPEC.md 的用途
+### 5.1 SPEC.md 的用途
 
 `SPEC.md` 是本系統的**功能規格書**，以一位專業股票交易員的視角定義系統應具備的功能。
 它是開發的「北極星」——決定下一步做什麼、什麼不做。
 
-### 4.2 優先級判讀規則
+### 5.2 優先級判讀規則
 
 SPEC.md 中的功能以 P0～P5 排序，判讀時遵循：
 
@@ -258,7 +347,7 @@ SPEC.md 中的功能以 P0～P5 排序，判讀時遵循：
 
 **禁止「跳著做」**：不可因為某個低優先級功能「比較有趣」就跳過高優先級功能。
 
-### 4.3 標記功能狀態
+### 5.3 標記功能狀態
 
 SPEC.md 中每個功能項目用以下標記標示狀態：
 
@@ -271,7 +360,7 @@ SPEC.md 中每個功能項目用以下標記標示狀態：
 
 每次功能完成後，**必須同步更新 SPEC.md 的狀態**，並在 commit message 中加入 `docs(spec): 標記 P0-1 動態停損為已完成`。
 
-### 4.4 新增功能到 SPEC.md
+### 5.4 新增功能到 SPEC.md
 
 新增功能規格時，需包含：
 
@@ -292,7 +381,7 @@ SPEC.md 中每個功能項目用以下標記標示狀態：
 **優先級理由**：為什麼這個優先級？
 ```
 
-### 4.5 判讀「做還是不做」的問題
+### 5.5 判讀「做還是不做」的問題
 
 遇到 SPEC.md 沒寫、但使用者提出的功能，先問：
 
@@ -301,7 +390,7 @@ SPEC.md 中每個功能項目用以下標記標示狀態：
 3. **是否在現有架構下可以快速實作（< 2hr）？** → 是，可插入目前迭代
 4. **是否需要付費 API 或複雜基礎設施？** → 記錄在 SPEC.md P4/P5，不立即實作
 
-### 4.6 資料來源評估準則
+### 5.6 資料來源評估準則
 
 優先使用免費且穩定的資料來源：
 
