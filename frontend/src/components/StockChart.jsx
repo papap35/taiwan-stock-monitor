@@ -103,7 +103,7 @@ export default function StockChart({ stock, onClose }) {
   const [months, setMonths] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showMA, setShowMA] = useState({ ma5: true, ma20: true, ma60: false });
+  const [showMA, setShowMA] = useState({ ma5: true, ma10: false, ma20: true, ma60: false, ma120: false, ma240: false });
   const [showBB, setShowBB] = useState(false);
   const [indicator, setIndicator] = useState('KD');
   const [mainTab, setMainTab] = useState('K線');
@@ -173,9 +173,9 @@ export default function StockChart({ stock, onClose }) {
       vma20.setData(volMa20.map(x => ({ time: x.time, value: x.value })));
     }
 
-    // MA 線
-    const maColors = { ma5: '#f59e0b', ma20: '#3b82f6', ma60: '#8b5cf6' };
-    const maPeriods = { ma5: 5, ma20: 20, ma60: 60 };
+    // MA 線（MA5=白 MA10=黃 MA20=橘 MA60=紫 MA120=藍 MA240=紅）
+    const maColors  = { ma5: '#e2e8f0', ma10: '#facc15', ma20: '#f97316', ma60: '#8b5cf6', ma120: '#3b82f6', ma240: '#ef4444' };
+    const maPeriods = { ma5: 5, ma10: 10, ma20: 20, ma60: 60, ma120: 120, ma240: 240 };
     Object.entries(showMA).forEach(([key, on]) => {
       if (!on) return;
       const d = calcMA(displayCandles, maPeriods[key]);
@@ -270,16 +270,31 @@ export default function StockChart({ stock, onClose }) {
   }, [onClose]);
 
   // ── 統計摘要 ──────────────────────────────────────
+  // MA 定義表（供統計列 & 工具列共用）
+  const MA_DEFS = [
+    { key: 'ma5',   period: 5,   label: 'MA5',   color: '#e2e8f0' },
+    { key: 'ma10',  period: 10,  label: 'MA10',  color: '#facc15' },
+    { key: 'ma20',  period: 20,  label: 'MA20',  color: '#f97316' },
+    { key: 'ma60',  period: 60,  label: 'MA60',  color: '#8b5cf6' },
+    { key: 'ma120', period: 120, label: 'MA120', color: '#3b82f6' },
+    { key: 'ma240', period: 240, label: 'MA240', color: '#ef4444' },
+  ];
+
   const stats = displayCandles.length > 0 ? (() => {
     const last  = displayCandles[displayCandles.length - 1];
     const high  = Math.max(...displayCandles.map(c => c.high));
     const low   = Math.min(...displayCandles.map(c => c.low));
-    const ma5v  = displayCandles.length >= 5  ? +(displayCandles.slice(-5).reduce((s, c) => s + c.close, 0) / 5).toFixed(2)   : null;
-    const ma20v = displayCandles.length >= 20 ? +(displayCandles.slice(-20).reduce((s, c) => s + c.close, 0) / 20).toFixed(2) : null;
+    // 計算所有啟用 MA 的當前值
+    const maValues = {};
+    MA_DEFS.forEach(({ key, period }) => {
+      if (showMA[key] && displayCandles.length >= period) {
+        maValues[key] = +(displayCandles.slice(-period).reduce((s, c) => s + c.close, 0) / period).toFixed(2);
+      }
+    });
     const volRatio = calcVolumeRatio(displayCandles, 5);
     const bb = (showBB && displayCandles.length >= 20) ? calcBollingerBands(displayCandles, 20, 2) : null;
     const latestBB = bb?.length ? bb[bb.length - 1] : null;
-    return { last, high, low, ma5v, ma20v, volRatio, latestBB };
+    return { last, high, low, maValues, volRatio, latestBB };
   })() : null;
 
   // ── 最新法人資料 ───────────────────────────────────
@@ -335,13 +350,25 @@ export default function StockChart({ stock, onClose }) {
 
           {/* MA 開關 + BB 開關（只在K線tab顯示） */}
           {mainTab === 'K線' && (
-            <div style={{ display: 'flex', gap: 4 }}>
-              {[['ma5','MA5','#f59e0b'],['ma20','MA20','#3b82f6'],['ma60','MA60','#8b5cf6']].map(([k, l, c]) => (
-                <button key={k} onClick={() => setShowMA(p => ({ ...p, [k]: !p[k] }))} style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700, border: `1px solid ${showMA[k] ? c : '#1e2d40'}`, background: showMA[k] ? `${c}20` : 'transparent', color: showMA[k] ? c : '#475569', cursor: 'pointer', textDecoration: showMA[k] ? 'none' : 'line-through', opacity: showMA[k] ? 1 : .5 }}>
-                  {l}
+            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {MA_DEFS.map(({ key, label, color }) => (
+                <button key={key} onClick={() => setShowMA(p => ({ ...p, [key]: !p[key] }))}
+                  style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                    border: `1px solid ${showMA[key] ? color : '#1e2d40'}`,
+                    background: showMA[key] ? `${color}22` : 'transparent',
+                    color: showMA[key] ? color : '#475569',
+                    cursor: 'pointer',
+                    textDecoration: showMA[key] ? 'none' : 'line-through',
+                    opacity: showMA[key] ? 1 : .5 }}>
+                  {label}
                 </button>
               ))}
-              <button onClick={() => setShowBB(p => !p)} style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700, border: `1px solid ${showBB ? '#a78bfa' : '#1e2d40'}`, background: showBB ? 'rgba(167,139,250,.15)' : 'transparent', color: showBB ? '#a78bfa' : '#475569', cursor: 'pointer', opacity: showBB ? 1 : .5 }}>
+              <button onClick={() => setShowBB(p => !p)}
+                style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                  border: `1px solid ${showBB ? '#a78bfa' : '#1e2d40'}`,
+                  background: showBB ? 'rgba(167,139,250,.15)' : 'transparent',
+                  color: showBB ? '#a78bfa' : '#475569',
+                  cursor: 'pointer', opacity: showBB ? 1 : .5 }}>
                 BB
               </button>
             </div>
@@ -356,8 +383,12 @@ export default function StockChart({ stock, onClose }) {
             {[
               { label: `${months}M高`, val: stats.high?.toFixed(stats.high >= 100 ? 1 : 2), color: '#ff4d4f' },
               { label: `${months}M低`, val: stats.low?.toFixed(stats.low >= 100 ? 1 : 2),  color: '#00c48c' },
-              { label: 'MA5',  val: stats.ma5v,  color: '#f59e0b', sub: stats.ma5v  ? (price > stats.ma5v  ? '站上' : '跌破') : '' },
-              { label: 'MA20', val: stats.ma20v, color: '#3b82f6', sub: stats.ma20v ? (price > stats.ma20v ? '站上' : '跌破') : '' },
+              ...MA_DEFS.filter(m => stats.maValues[m.key] != null).map(m => ({
+                label: m.label,
+                val: stats.maValues[m.key],
+                color: m.color,
+                sub: price > stats.maValues[m.key] ? '站上' : '跌破',
+              })),
               ...(stats.volRatio != null ? [{ label: '量比', val: stats.volRatio.toFixed(2), color: stats.volRatio > 2 ? '#ff4d4f' : stats.volRatio < 0.5 ? '#00c48c' : '#94a3b8', sub: stats.volRatio > 2 ? '放量' : stats.volRatio < 0.5 ? '縮量' : '量平' }] : []),
               ...(stats.latestBB ? [{ label: 'BB 寬', val: `${stats.latestBB.bandwidth.toFixed(1)}%`, color: '#a78bfa', sub: `上${stats.latestBB.upper} 下${stats.latestBB.lower}` }] : []),
               ...(latestInst ? [
