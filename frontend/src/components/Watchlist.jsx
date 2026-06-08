@@ -526,6 +526,23 @@ export default function Watchlist() {
             </div>
           )}
 
+          {/* 欄位表頭 */}
+          {portfolioRows.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '28px 1fr 90px 90px 120px 120px 90px 80px 120px 60px 140px',
+              padding: '5px 10px',
+              borderBottom: '1px solid var(--color-border-tertiary)',
+              background: 'rgba(0,0,0,.15)',
+            }}>
+              {['', '名稱／代號', '現價', '漲跌%', '加權均成', '損益%', '市值', 'P/E', '目標／停損', '籌碼分', '操作'].map((h, i) => (
+                <div key={i} style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontWeight: 600, letterSpacing: '.04em', textAlign: i >= 2 ? 'right' : 'left', paddingRight: i >= 2 && i < 10 ? 4 : 0 }}>
+                  {h}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* 股票列表 */}
           {portfolioRows.map((row) => {
             const { code, name, q, price, lots, totalShares, avgCost, mktVal, pnlAmt, pnlPct, strategy, target, stopLoss, notes } = row;
@@ -550,7 +567,7 @@ export default function Watchlist() {
                 {/* ── 主列 ─────────────────────────────────── */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '28px 1fr 90px 90px 120px 120px 90px 80px 120px 140px',
+                  gridTemplateColumns: '28px 1fr 90px 90px 120px 120px 90px 80px 120px 60px 140px',
                   alignItems: 'center',
                   padding: '10px 10px',
                   cursor: 'pointer',
