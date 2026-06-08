@@ -259,15 +259,8 @@ async function fetchMarketBreadth() {
   if (cached) return cached;
 
   try {
-    // ── 盤中：MI_INDEX 有即時上漲/下跌/平盤/漲停/跌停家數 ──
+    // ── 盤中：MI_INDEX type=MS 提供即時漲跌家數（上市市場廣度） ──
     if (isTradingHours()) {
-      const url = 'https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX?response=json';
-      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
-      const data = await res.json();
-
-      // MI_INDEX 包含多種指數列，其中代號 'MI_IDX' 開頭或 '發行量加權股價指數' 那列含有廣度
-      // 另有一份 MI_INDEX20 提供漲跌家數
-      // 改抓專用的漲跌家數 API
       const breadthUrl = 'https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&type=MS';
       const breadthRes = await fetch(breadthUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
       const breadthData = await breadthRes.json();
