@@ -324,3 +324,99 @@ export function fmtShares(shares, oddLot) {
   if (!l && !o) return '—';
   return [l && `${l}張`, o && `${o}股`].filter(Boolean).join('+');
 }
+
+// ── P2-10: 個股籌碼評分系統 ─────────────────────────────
+
+/**
+ * 計算個股籌碼評分（0～100 分）。
+ *
+ * 各項配分：
+ *   外資連續買超天數  × 5  （上限 25 分）
+ *   投信連續買超天數  × 3  （上限 15 分）
+ *   自營商連續買超天數 × 2 （上限 10 分）
+ *   融資餘額連續減少天數 × 3（上限 15 分，代表籌碼乾淨）
+ *   融券連續增加天數  × 2  （上限 10 分，代表軋空潛力）
+ *   法人合計買超佔比  × 25 （上限 25 分，按比例映射）
+ *
+ * @param {Array<{time:number, fiNet:number, itNet:number, dealerNet:number, totalNet:number}>} instData
+ * @param {Array<{time:number, marginBal:number, shortBal:number}>} marginData
+ * @returns {{ score: number, detail: object } | null}
+ */
+export function calcChipScore(instData, marginData) {
+  if (!instData || instData.length === 0) return null;
+
+  // 確保依 time 升冪排序
+  const inst = [...instData].sort((a, b) => a.time - b.time);
+  const latest = inst[inst.length - 1];
+
+  // ── 1. 外資連續買超天數 × 5（上限 25）────────────────
+  let fiBuyDays = 0;
+  for (let i = inst.length - 1; i >= 0; i--) {
+    if ((inst[i].fiNet ?? 0) > 0) fiBuyDays++;
+    else break;
+  }
+  const fiScore = Math.min(fiBuyDays * 5, 25);
+
+  // ── 2. 投信連續買超天數 × 3（上限 15）────────────────
+  let itBuyDays = 0;
+  for (let i = inst.length - 1; i >= 0; i--) {
+    if ((inst[i].itNet ?? 0) > 0) itBuyDays++;
+    else break;
+  }
+  const itScore = Math.min(itBuyDays * 3, 15);
+
+  // ── 3. 自營商連續買超天數 × 2（上限 10）──────────────
+  let dlBuyDays = 0;
+  for (let i = inst.length - 1; i >= 0; i--) {
+    if ((inst[i].dealerNet ?? 0) > 0) dlBuyDays++;
+    else break;
+  }
+  const dlScore = Math.min(dlBuyDays * 2, 10);
+
+  // ── 4. 融資餘額連續減少天數 × 3（上限 15）────────────
+  let marginDecrDays = 0;
+  if (marginData && marginData.length >= 2) {
+    const marg = [...marginData].sort((a, b) => a.time - b.time);
+    for (let i = marg.length - 1; i >= 1; i--) {
+      if ((marg[i].marginBal ?? 0) < (marg[i - 1].marginBal ?? 0)) marginDecrDays++;
+      else break;
+    }
+  }
+  const marginScore = Math.min(marginDecrDays * 3, 15);
+
+  // ── 5. 融券連續增加天數 × 2（上限 10）────────────────
+  let shortIncrDays = 0;
+  if (marginData && marginData.length >= 2) {
+    const marg = [...marginData].sort((a, b) => a.time - b.time);
+    for (let i = marg.length - 1; i >= 1; i--) {
+      if ((marg[i].shortBal ?? 0) > (marg[i - 1].shortBal ?? 0)) shortIncrDays++;
+      else break;
+    }
+  }
+  const shortScore = Math.min(shortIncrDays * 2, 10);
+
+  // ── 6. 法人合計買超佔比（上限 25）────────────────────
+  // totalNet 單位：張；用最新日資料
+  // 以 totalNet 佔近 5 日平均成交量的比例映射，比例每 1% 對應 5 分，上限 25
+  const totalNet = latest.totalNet ?? ((latest.fiNet ?? 0) + (latest.itNet ?? 0) + (latest.dealerNet ?? 0));
+  // 取近 5 日 totalNet 中位數作為基準（若只有 1 筆則直接用）
+  const recent5 = inst.slice(-5).map(r => Math.abs(r.totalNet ?? 0));
+  const vol5avg  = recent5.reduce((s, v) => s + v, 0) / (recent5.length || 1);
+  // 比例：totalNet / vol5avg，正值代表買超，每 20% 給 5 分
+  const netRatio  = vol5avg > 0 ? (totalNet / vol5avg) : 0;
+  const netScore  = Math.min(Math.max(Math.round(netRatio * 25), 0), 25);
+
+  const score = fiScore + itScore + dlScore + marginScore + shortScore + netScore;
+
+  return {
+    score: Math.min(Math.round(score), 100),
+    detail: {
+      fi:     { days: fiBuyDays,     score: fiScore,     label: '外資連買' },
+      it:     { days: itBuyDays,     score: itScore,     label: '投信連買' },
+      dealer: { days: dlBuyDays,     score: dlScore,     label: '自營連買' },
+      margin: { days: marginDecrDays, score: marginScore, label: '融資減少' },
+      short:  { days: shortIncrDays, score: shortScore,  label: '融券增加' },
+      net:    { ratio: +netRatio.toFixed(2), score: netScore, label: '法人佔比' },
+    },
+  };
+}

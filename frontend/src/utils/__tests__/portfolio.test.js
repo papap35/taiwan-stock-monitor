@@ -599,3 +599,113 @@ describe('aggregateCandles', () => {
     expect(aggregateCandles([], 'weekly')).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// calcChipScore
+// ─────────────────────────────────────────────────────────
+import { calcChipScore } from '../portfolio.js';
+
+const makeInst = (overrides = {}) => ({
+  time: 1700000000, fiNet: 0, itNet: 0, dealerNet: 0, totalNet: 0, ...overrides,
+});
+const makeMarg = (overrides = {}) => ({
+  time: 1700000000, marginBal: 10000, shortBal: 500, ...overrides,
+});
+
+describe('calcChipScore', () => {
+  it('instData 空陣列 → 回傳 null', () => {
+    expect(calcChipScore([], [])).toBeNull();
+    expect(calcChipScore(null, [])).toBeNull();
+  });
+
+  it('外資連續買超 5 天 → fi 分數 25（上限）', () => {
+    const inst = Array.from({ length: 5 }, (_, i) =>
+      makeInst({ time: 1700000000 + i * 86400, fiNet: 100, totalNet: 100 })
+    );
+    const result = calcChipScore(inst, []);
+    expect(result.detail.fi.days).toBe(5);
+    expect(result.detail.fi.score).toBe(25);
+  });
+
+  it('外資連續買超超過 5 天 → 上限 25 分，不超過', () => {
+    const inst = Array.from({ length: 10 }, (_, i) =>
+      makeInst({ time: 1700000000 + i * 86400, fiNet: 100, totalNet: 100 })
+    );
+    const result = calcChipScore(inst, []);
+    expect(result.detail.fi.score).toBe(25);
+  });
+
+  it('外資賣超最後一天 → 連買天數歸零', () => {
+    const inst = [
+      makeInst({ time: 1700000000,        fiNet: 100 }),
+      makeInst({ time: 1700000000 + 86400, fiNet: -50 }), // 最後一天賣超
+    ];
+    const result = calcChipScore(inst, []);
+    expect(result.detail.fi.days).toBe(0);
+    expect(result.detail.fi.score).toBe(0);
+  });
+
+  it('投信連買 3 天 → 9 分', () => {
+    const inst = Array.from({ length: 3 }, (_, i) =>
+      makeInst({ time: 1700000000 + i * 86400, itNet: 50, totalNet: 50 })
+    );
+    const result = calcChipScore(inst, []);
+    expect(result.detail.it.score).toBe(9);
+  });
+
+  it('融資連續減少 3 天 → margin 分數 9', () => {
+    const marg = [
+      makeMarg({ time: 1700000000,           marginBal: 10000 }),
+      makeMarg({ time: 1700000000 + 86400,   marginBal: 9500 }),
+      makeMarg({ time: 1700000000 + 172800,  marginBal: 9000 }),
+      makeMarg({ time: 1700000000 + 259200,  marginBal: 8500 }),
+    ];
+    const result = calcChipScore([makeInst()], marg);
+    expect(result.detail.margin.days).toBe(3);
+    expect(result.detail.margin.score).toBe(9);
+  });
+
+  it('融資增加（籌碼不乾淨）→ margin 分 0', () => {
+    const marg = [
+      makeMarg({ time: 1700000000,          marginBal: 8000 }),
+      makeMarg({ time: 1700000000 + 86400,  marginBal: 9000 }),
+    ];
+    const result = calcChipScore([makeInst()], marg);
+    expect(result.detail.margin.score).toBe(0);
+  });
+
+  it('最高分情境：所有項目達上限 → score = 100', () => {
+    // fi: 5天買超(25), it: 5天買超(15), dealer: 5天買超(10), margin: 5天減(15), short: 5天增(10), net: ratio>=1(25)
+    const inst = Array.from({ length: 5 }, (_, i) =>
+      makeInst({ time: 1700000000 + i * 86400, fiNet: 500, itNet: 300, dealerNet: 200, totalNet: 1000 })
+    );
+    const marg = Array.from({ length: 6 }, (_, i) =>
+      makeMarg({ time: 1700000000 + i * 86400, marginBal: 10000 - i * 500, shortBal: 500 + i * 100 })
+    );
+    const result = calcChipScore(inst, marg);
+    expect(result.score).toBeLessThanOrEqual(100);
+    expect(result.score).toBeGreaterThan(50);
+  });
+
+  it('回傳結構包含 score 與 detail 各子項', () => {
+    const result = calcChipScore([makeInst({ fiNet: 100, totalNet: 100 })], []);
+    expect(result).toHaveProperty('score');
+    expect(result).toHaveProperty('detail.fi');
+    expect(result).toHaveProperty('detail.it');
+    expect(result).toHaveProperty('detail.dealer');
+    expect(result).toHaveProperty('detail.margin');
+    expect(result).toHaveProperty('detail.short');
+    expect(result).toHaveProperty('detail.net');
+  });
+
+  it('【防迴歸】instData 未排序時，連買天數仍應從最新日往回計算', () => {
+    // 故意逆序：最後一筆時間最早
+    const inst = [
+      makeInst({ time: 1700000000 + 86400, fiNet: 100 }), // 較新
+      makeInst({ time: 1700000000,          fiNet: 100 }), // 較舊
+    ];
+    const result = calcChipScore(inst, []);
+    // 兩天都買超，應為 2 天
+    expect(result.detail.fi.days).toBe(2);
+  });
+});
