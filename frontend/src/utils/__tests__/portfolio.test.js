@@ -709,3 +709,97 @@ describe('calcChipScore', () => {
     expect(result.detail.fi.days).toBe(2);
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// calcExitedLot / calcPerformance
+// ─────────────────────────────────────────────────────────
+import { calcExitedLot, calcPerformance } from '../portfolio.js';
+
+describe('calcExitedLot', () => {
+  it('正常情況：計算實現損益、持有天數、年化報酬', () => {
+    const lot = { date: '2024-01-01', exitDate: '2024-04-10', exitPrice: 110, cost: 100, shares: 1, oddLotShares: 0 };
+    const r = calcExitedLot(lot);
+    expect(r.pnlAmt).toBe(10000);        // (110-100)*1000
+    expect(r.pnlPct).toBe(10);
+    expect(r.holdDays).toBe(100);
+    expect(r.annualReturn).toBeGreaterThan(30); // 年化 ~36%
+  });
+
+  it('虧損情況：pnlAmt / pnlPct 為負值', () => {
+    const lot = { date: '2024-01-01', exitDate: '2024-03-01', exitPrice: 80, cost: 100, shares: 1, oddLotShares: 0 };
+    const r = calcExitedLot(lot);
+    expect(r.pnlAmt).toBe(-20000);
+    expect(r.pnlPct).toBe(-20);
+  });
+
+  it('exitPrice 為 0 → 回傳 null', () => {
+    expect(calcExitedLot({ date: '2024-01-01', exitPrice: 0, cost: 100, shares: 1, oddLotShares: 0 })).toBeNull();
+  });
+
+  it('shares 與 oddLotShares 都為 0 → 回傳 null', () => {
+    expect(calcExitedLot({ date: '2024-01-01', exitDate: '2024-02-01', exitPrice: 110, cost: 100, shares: 0, oddLotShares: 0 })).toBeNull();
+  });
+
+  it('持有天數最少 1 天（同日出場）', () => {
+    const lot = { date: '2024-01-01', exitDate: '2024-01-01', exitPrice: 110, cost: 100, shares: 1, oddLotShares: 0 };
+    expect(calcExitedLot(lot).holdDays).toBe(1);
+  });
+});
+
+describe('calcPerformance', () => {
+  const makeEntry = (pnlSign, code = '2330', strategy = 'swing', exitDate = '2024-06-01') => {
+    const exitPrice = pnlSign > 0 ? 110 : 90;
+    return { code, name: '台積電', strategy, lot: { date: '2024-01-01', exitDate, exitPrice, cost: 100, shares: 1, oddLotShares: 0 } };
+  };
+
+  it('空陣列 → 回傳 null', () => {
+    expect(calcPerformance([])).toBeNull();
+    expect(calcPerformance(null)).toBeNull();
+  });
+
+  it('2勝1敗 → winRate = 66.7, totalTrades = 3', () => {
+    const entries = [makeEntry(1), makeEntry(1), makeEntry(-1)];
+    const r = calcPerformance(entries);
+    expect(r.totalTrades).toBe(3);
+    expect(r.winCount).toBe(2);
+    expect(r.winRate).toBe(66.7);
+  });
+
+  it('profitFactor = abs(avgWin*wins / avgLoss*losses)', () => {
+    const entries = [makeEntry(1), makeEntry(-1)];
+    const r = calcPerformance(entries);
+    expect(r.profitFactor).toBeGreaterThan(0);
+  });
+
+  it('equityCurve 最後一筆 cumulative = 所有 pnlAmt 總和', () => {
+    const entries = [makeEntry(1), makeEntry(1), makeEntry(-1)];
+    const r = calcPerformance(entries);
+    const total = r.results.reduce((s, x) => s + x.pnlAmt, 0);
+    expect(r.equityCurve[r.equityCurve.length - 1].cumulative).toBe(total);
+  });
+
+  it('最大連勝：3 連勝 → maxWinStreak = 3', () => {
+    const entries = [
+      makeEntry(1, '2330', 'swing', '2024-01-01'),
+      makeEntry(1, '2317', 'swing', '2024-02-01'),
+      makeEntry(1, '2454', 'swing', '2024-03-01'),
+      makeEntry(-1, '2382', 'swing', '2024-04-01'),
+    ];
+    expect(calcPerformance(entries).maxWinStreak).toBe(3);
+  });
+
+  it('strategyWinRate 按策略分組', () => {
+    const entries = [makeEntry(1, '2330', 'long'), makeEntry(-1, '2317', 'swing')];
+    const r = calcPerformance(entries);
+    const long = r.strategyWinRate.find(s => s.strategy === 'long');
+    const swing = r.strategyWinRate.find(s => s.strategy === 'swing');
+    expect(long.winRate).toBe(100);
+    expect(swing.winRate).toBe(0);
+  });
+
+  it('【防迴歸】pnlPct=0（平手）算在 losses，不影響 winCount', () => {
+    const entries = [makeEntry(0)]; // 用 pnlSign=0 → exitPrice=90 → 虧損
+    const r = calcPerformance(entries);
+    expect(r.winCount).toBe(0);
+  });
+});

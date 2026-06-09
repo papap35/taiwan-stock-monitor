@@ -1,12 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 import StockChart from './StockChart';
 import {
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, ResponsiveContainer,
+} from 'recharts';
+import {
   migrateLots, lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct,
   calcPortfolio, fmtPct, fmtAmt, fmtShares,
   calcRR, calcPositionSize, calcTrailingStopPrice, isTrailingStopTriggered,
-  calcChipScore,
+  calcChipScore, calcExitedLot, calcPerformance,
 } from '../utils/portfolio';
 
 // ─────────────────────────────────────────────────────────────
@@ -55,6 +59,175 @@ function MdText({ text }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  績效統計儀表板（P3-13）
+// ─────────────────────────────────────────────────────────────
+function PerformanceDashboard({ watchlist }) {
+  // 收集所有已出場的 lot（exitPrice 存在）
+  const exitedEntries = useMemo(() => {
+    const arr = [];
+    for (const item of watchlist) {
+      const lots = item.lots || [];
+      for (const lot of lots) {
+        if (lot.exitPrice) arr.push({ lot, code: item.code, name: item.name, strategy: item.strategy });
+      }
+    }
+    return arr;
+  }, [watchlist]);
+
+  const stats = useMemo(() => calcPerformance(exitedEntries), [exitedEntries]);
+
+  if (exitedEntries.length === 0) {
+    return (
+      <div style={{ background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: 48, textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>尚無已出場記錄</div>
+        <div style={{ fontSize: 12 }}>在持股管理頁面，點「編輯」任一買入記錄並填寫出場價格，即可在此查看績效統計</div>
+      </div>
+    );
+  }
+
+  const STAT_CARD = ({ label, value, sub, color }) => (
+    <div style={{ background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: '12px 14px', minWidth: 100 }}>
+      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: color || 'var(--color-text-primary)' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  const STRATEGY_LABEL = { long: '長期', swing: '波段', trade: '短線' };
+
+  return (
+    <div style={{ background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: 18 }}>
+
+      {/* ─ 核心指標 ────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+        <STAT_CARD label="總交易筆數" value={stats.totalTrades} />
+        <STAT_CARD label="勝率" value={`${stats.winRate}%`}
+          color={stats.winRate >= 60 ? '#00c48c' : stats.winRate >= 45 ? '#f59e0b' : '#ff4d4f'}
+          sub={`${stats.winCount}勝 ${stats.totalTrades - stats.winCount}敗`} />
+        <STAT_CARD label="平均獲利" value={`+${stats.avgWin}%`} color="#ff4d4f" />
+        <STAT_CARD label="平均虧損" value={`${stats.avgLoss}%`} color="#00c48c" />
+        <STAT_CARD label="獲利因子" value={stats.profitFactor ?? '∞'}
+          color={stats.profitFactor >= 2 ? '#f59e0b' : stats.profitFactor >= 1 ? '#e2e8f0' : '#64748b'} />
+        <STAT_CARD label="期望值" value={`${stats.expectancy > 0 ? '+' : ''}${stats.expectancy}%`}
+          color={stats.expectancy > 0 ? '#ff4d4f' : '#00c48c'} />
+        <STAT_CARD label="最大連勝" value={`${stats.maxWinStreak}連`} color="#ff4d4f" />
+        <STAT_CARD label="最大連敗" value={`${stats.maxLossStreak}連`} color="#ff4d4f" />
+      </div>
+
+      {/* ─ 資金曲線 ───────────────────────────────── */}
+      {stats.equityCurve.length > 1 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 8 }}>📈 累積損益曲線</div>
+          <div style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 4px', border: '1px solid var(--color-border-tertiary)' }}>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={stats.equityCurve} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} tickFormatter={v => v >= 0 ? `+${(v/10000).toFixed(1)}萬` : `${(v/10000).toFixed(1)}萬`} width={55} />
+                <Tooltip
+                  contentStyle={{ background: '#0f1923', border: '1px solid rgba(255,255,255,.1)', borderRadius: 6, fontSize: 11 }}
+                  formatter={(v) => [`${v >= 0 ? '+' : ''}${v.toLocaleString()} 元`, '累積損益']}
+                />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,.2)" strokeDasharray="4 2" />
+                <Line type="monotone" dataKey="cumulative" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ─ 月度損益長條圖 ──────────────────────────── */}
+      {stats.monthly.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 8 }}>🗓 月度損益</div>
+          <div style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 4px', border: '1px solid var(--color-border-tertiary)' }}>
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={stats.monthly} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" />
+                <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} tickFormatter={v => `${v >= 0 ? '+' : ''}${(v/10000).toFixed(1)}萬`} width={55} />
+                <Tooltip
+                  contentStyle={{ background: '#0f1923', border: '1px solid rgba(255,255,255,.1)', borderRadius: 6, fontSize: 11 }}
+                  formatter={(v) => [`${v >= 0 ? '+' : ''}${v.toLocaleString()} 元`, '月度損益']}
+                />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,.2)" />
+                <Bar dataKey="pnlAmt" radius={[3, 3, 0, 0]}
+                  fill="#3b82f6"
+                  label={false}
+                  // 正負用不同色
+                  isAnimationActive={false}
+                  shape={(props) => {
+                    const { x, y, width, height, value } = props;
+                    const color = value >= 0 ? '#ff4d4f' : '#00c48c';
+                    return <rect x={x} y={y} width={width} height={Math.abs(height) || 1} fill={color} rx={3} />;
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ─ 最佳/最差單筆 ────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+        {stats.maxWinTrade && (
+          <div style={{ background: 'rgba(255,77,79,.06)', border: '1px solid rgba(255,77,79,.15)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, color: '#ff4d4f', fontWeight: 700, marginBottom: 4 }}>🏆 最佳單筆</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{stats.maxWinTrade.name}（{stats.maxWinTrade.code}）</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: '#ff4d4f', fontWeight: 800 }}>+{stats.maxWinTrade.pnlPct?.toFixed(2)}%</div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>+{stats.maxWinTrade.pnlAmt?.toLocaleString()} 元</div>
+          </div>
+        )}
+        {stats.maxLossTrade && (
+          <div style={{ background: 'rgba(0,196,140,.06)', border: '1px solid rgba(0,196,140,.15)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, color: '#00c48c', fontWeight: 700, marginBottom: 4 }}>📉 最大虧損</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{stats.maxLossTrade.name}（{stats.maxLossTrade.code}）</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: '#00c48c', fontWeight: 800 }}>{stats.maxLossTrade.pnlPct?.toFixed(2)}%</div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{stats.maxLossTrade.pnlAmt?.toLocaleString()} 元</div>
+          </div>
+        )}
+      </div>
+
+      {/* ─ 個股勝率 ──────────────────────────────────── */}
+      {stats.stockWinRate.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 8 }}>🎯 個股勝率</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {stats.stockWinRate.map(s => (
+              <div key={s.code} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px', borderRadius: 6, background: 'var(--color-background-secondary)' }}>
+                <div style={{ width: 80, fontSize: 11, color: 'var(--color-text-secondary)', flexShrink: 0 }}>{s.name} <span style={{ color: 'var(--color-text-tertiary)', fontSize: 9 }}>{s.code}</span></div>
+                <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,.08)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${s.winRate}%`, height: '100%', background: s.winRate >= 60 ? '#00c48c' : s.winRate >= 40 ? '#f59e0b' : '#ff4d4f', borderRadius: 3 }} />
+                </div>
+                <div style={{ width: 50, textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: s.winRate >= 60 ? '#00c48c' : s.winRate >= 40 ? '#f59e0b' : '#ff4d4f' }}>{s.winRate}%</div>
+                <div style={{ width: 40, textAlign: 'right', fontSize: 10, color: 'var(--color-text-tertiary)' }}>{s.wins}/{s.total}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─ 策略勝率 ──────────────────────────────────── */}
+      {stats.strategyWinRate.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 8 }}>⚡ 策略勝率</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {stats.strategyWinRate.map(s => (
+              <div key={s.strategy} style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-tertiary)', minWidth: 100 }}>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>{STRATEGY_LABEL[s.strategy] || s.strategy}</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 800, color: s.winRate >= 60 ? '#00c48c' : s.winRate >= 40 ? '#f59e0b' : '#ff4d4f' }}>{s.winRate}%</div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{s.wins}勝 / {s.total - s.wins}敗</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Lot Modal（新增 / 編輯買入記錄）
 // ─────────────────────────────────────────────────────────────
 function LotModal({ stockName, lot, settings, onSave, onClose }) {
@@ -68,6 +241,10 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
     trailingStopPct: lot?.trailingStopPct ?? '',
     planTarget:      lot?.planTarget      ?? '',
     planStop:        lot?.planStop        ?? '',
+    exitPrice:       lot?.exitPrice       ?? '',
+    exitDate:        lot?.exitDate        ?? '',
+    exitReason:      lot?.exitReason      ?? '',
+    lesson:          lot?.lesson          ?? '',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const inp = { padding: '7px 10px', border: '1px solid var(--color-border-secondary)', borderRadius: 6, background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, width: '100%' };
@@ -210,10 +387,58 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
             )}
           </div>
 
-          {/* 備註 */}
+          {/* 進場理由 */}
           <div>
-            <div style={label}>備註（選填）</div>
-            <input style={inp} placeholder="例：逢低布局、法說前布局..." value={form.note} onChange={e => f('note', e.target.value)} />
+            <div style={label}>進場理由（選填）</div>
+            <input style={inp} placeholder="例：逢低布局、法說前布局、突破頸線..." value={form.note} onChange={e => f('note', e.target.value)} />
+          </div>
+
+          {/* ── 出場記錄 ──────────────────────────────────── */}
+          <div style={{ borderTop: '1px solid var(--color-border-tertiary)', paddingTop: 10 }}>
+            <div style={label}>🚪 出場記錄（填寫後視為已出場）</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>出場價格（元）</div>
+                <input style={inp} type="number" step="0.01" placeholder="0.00" value={form.exitPrice} onChange={e => f('exitPrice', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>出場日期</div>
+                <input style={inp} type="date" value={form.exitDate} onChange={e => f('exitDate', e.target.value)} />
+              </div>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>出場理由</div>
+              <select style={{ ...inp, cursor: 'pointer' }} value={form.exitReason} onChange={e => f('exitReason', e.target.value)}>
+                <option value="">請選擇...</option>
+                <option value="target">🎯 目標價到達</option>
+                <option value="stoploss">🛡 停損觸發</option>
+                <option value="technical">📉 技術面破壞</option>
+                <option value="fundamental">📋 基本面改變</option>
+                <option value="other">💡 其他</option>
+              </select>
+            </div>
+            {form.exitPrice && form.cost && (
+              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6,
+                background: (parseFloat(form.exitPrice) >= parseFloat(form.cost)) ? 'rgba(0,196,140,.08)' : 'rgba(255,77,79,.08)',
+                border: `1px solid ${(parseFloat(form.exitPrice) >= parseFloat(form.cost)) ? 'rgba(0,196,140,.2)' : 'rgba(255,77,79,.2)'}`,
+                fontSize: 11, fontFamily: 'var(--font-mono)',
+              }}>
+                {(() => {
+                  const ep = parseFloat(form.exitPrice), cp = parseFloat(form.cost);
+                  const sh = (parseInt(form.shares)||0)*1000 + (parseInt(form.oddLotShares)||0);
+                  const pct = cp > 0 ? ((ep/cp-1)*100).toFixed(2) : null;
+                  const amt = sh > 0 ? Math.round((ep-cp)*sh) : null;
+                  return <span style={{ color: ep >= cp ? '#00c48c' : '#ff4d4f', fontWeight: 700 }}>
+                    {ep >= cp ? '▲ 獲利' : '▼ 虧損'} {pct}%
+                    {amt != null && <span style={{ color: 'var(--color-text-secondary)', fontWeight: 400, marginLeft: 8 }}>{amt > 0 ? '+' : ''}{amt.toLocaleString()} 元</span>}
+                  </span>;
+                })()}
+              </div>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 3 }}>這筆學到什麼（選填）</div>
+              <input style={inp} placeholder="例：停損太慢、法人轉賣時應提前出場..." value={form.lesson} onChange={e => f('lesson', e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -230,6 +455,10 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
               trailingStopPct: form.trailingStopPct ? parseFloat(form.trailingStopPct) : null,
               planTarget:      form.planTarget      ? parseFloat(form.planTarget)      : null,
               planStop:        form.planStop        ? parseFloat(form.planStop)        : null,
+              exitPrice:       form.exitPrice       ? parseFloat(form.exitPrice)       : null,
+              exitDate:        form.exitDate        || null,
+              exitReason:      form.exitReason      || null,
+              lesson:          form.lesson.trim()   || null,
             })}
             style={{ flex: 1, padding: '8px', background: valid ? 'var(--color-brand)' : 'var(--color-background-tertiary)', border: 'none', borderRadius: 6, color: valid ? '#fff' : 'var(--color-text-tertiary)', cursor: valid ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600 }}>
             {lot ? '儲存變更' : '新增記錄'}
@@ -488,7 +717,7 @@ export default function Watchlist() {
 
       {/* Tab 切換 */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border-tertiary)', background: 'var(--color-background-secondary)', borderRadius: '8px 8px 0 0' }}>
-        {[['holdings', '📋 持股管理'], ['brief', '🤖 每日 AI 簡報']].map(([k, l]) => (
+        {[['holdings', '📋 持股管理'], ['performance', '📊 績效統計'], ['brief', '🤖 每日 AI 簡報']].map(([k, l]) => (
           <button key={k} onClick={() => setActiveTab(k)} style={{
             padding: '9px 18px', border: 'none', background: 'transparent',
             borderBottom: activeTab === k ? '2px solid var(--color-brand)' : '2px solid transparent',
@@ -708,26 +937,37 @@ export default function Watchlist() {
                       <div style={{ padding: '12px 48px', fontSize: 11, color: 'var(--color-text-tertiary)' }}>尚無買入記錄，點下方「+ 新增買入記錄」開始記錄</div>
                     ) : lots.map(lot => {
                       const ls = lotShares(lot);
-                      const lpnlPct = lot.cost && price ? lotPnlPct(lot, price) : null;
-                      const lpnlAmt = lot.cost && price ? lotPnlAmt(lot, price) : null;
-                      const lmkt    = price ? lotMktVal(lot, price) : null;
-                      const lColor  = lpnlPct == null ? '#64748b' : lpnlPct >= 0 ? '#ff4d4f' : '#00c48c';
-                      // 動態停損計算
+                      const isExited = !!lot.exitPrice;
+                      const exitedResult = isExited ? calcExitedLot(lot) : null;
+                      // 已出場：用 exitPrice 計算損益；持倉中：用 price
+                      const lpnlPct = isExited
+                        ? (exitedResult?.pnlPct ?? null)
+                        : (lot.cost && price ? lotPnlPct(lot, price) : null);
+                      const lpnlAmt = isExited
+                        ? (exitedResult?.pnlAmt ?? null)
+                        : (lot.cost && price ? lotPnlAmt(lot, price) : null);
+                      const lmkt = isExited ? null : (price ? lotMktVal(lot, price) : null);
+                      const lColor = lpnlPct == null ? '#64748b' : lpnlPct >= 0 ? '#ff4d4f' : '#00c48c';
+                      // 動態停損計算（僅持倉中）
                       const peak = peakPrices?.[code] ?? 0;
-                      const tsPct = lot.trailingStopPct;
+                      const tsPct = !isExited ? lot.trailingStopPct : null;
                       const tsPrice = (peak > 0 && tsPct) ? calcTrailingStopPrice(peak, tsPct) : null;
                       const tsTriggered = (price > 0 && tsPrice) ? isTrailingStopTriggered(price, peak, tsPct) : false;
                       // R/R 摘要
-                      const rrInfo = lot.planTarget && lot.planStop && lot.cost ? calcRR(lot.cost, lot.planTarget, lot.planStop) : null;
+                      const rrInfo = !isExited && lot.planTarget && lot.planStop && lot.cost ? calcRR(lot.cost, lot.planTarget, lot.planStop) : null;
                       return (
                         <div key={lot.id}>
                           <div
-                            style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 100px 100px 90px 1fr', alignItems: 'center', padding: '7px 48px', borderTop: '1px solid rgba(255,255,255,.03)', background: tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent' }}
-                            onMouseEnter={e => e.currentTarget.style.background = tsTriggered ? 'rgba(248,113,113,.07)' : 'rgba(255,255,255,.025)'}
-                            onMouseLeave={e => e.currentTarget.style.background = tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent'}
+                            style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 100px 100px 90px 1fr', alignItems: 'center', padding: '7px 48px', borderTop: '1px solid rgba(255,255,255,.03)',
+                              background: isExited ? 'rgba(100,116,139,.04)' : tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent',
+                              opacity: isExited ? 0.72 : 1,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = isExited ? 'rgba(100,116,139,.07)' : tsTriggered ? 'rgba(248,113,113,.07)' : 'rgba(255,255,255,.025)'}
+                            onMouseLeave={e => e.currentTarget.style.background = isExited ? 'rgba(100,116,139,.04)' : tsTriggered ? 'rgba(248,113,113,.04)' : 'transparent'}
                           >
                             <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
                               {lot.date || <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                              {isExited && <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>↩ {lot.exitDate || '已出場'}</div>}
                             </div>
                             <div style={{ textAlign: 'right', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', paddingRight: 6 }}>
                               <div>{fmtShares(lot.shares, lot.oddLotShares)}</div>
@@ -735,6 +975,7 @@ export default function Watchlist() {
                             </div>
                             <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
                               {lot.cost ? `$${lot.cost}` : '—'}
+                              {isExited && <div style={{ fontSize: 9, color: '#94a3b8' }}>→ ${lot.exitPrice}</div>}
                             </div>
                             <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: lColor, paddingRight: 6 }}>
                               {lpnlPct != null ? fmtPct(lpnlPct) : '—'}
@@ -743,25 +984,43 @@ export default function Watchlist() {
                               {lpnlAmt != null ? fmtAmt(lpnlAmt) : '—'}
                             </div>
                             <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', paddingRight: 6 }}>
-                              {lmkt ? `${(lmkt / 10000).toFixed(0)}萬` : '—'}
+                              {isExited
+                                ? (exitedResult?.holdDays ? <span style={{ fontSize: 9, color: '#64748b' }}>{exitedResult.holdDays}天</span> : '—')
+                                : (lmkt ? `${(lmkt / 10000).toFixed(0)}萬` : '—')}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 6 }}>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflow: 'hidden' }}>
-                                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {lot.note || ''}
-                                </span>
-                                {/* 動態停損徽章 */}
-                                {tsPrice && (
-                                  <span style={{ fontSize: 9, color: tsTriggered ? '#f87171' : '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                                    {tsTriggered ? '⚠️ 停損觸發！' : `🛡 移動停損 $${tsPrice.toFixed(2)}`}
-                                    {peak > 0 && ` (峰 $${peak.toFixed(2)})`}
-                                  </span>
-                                )}
-                                {/* R/R 徽章 */}
-                                {rrInfo && (
-                                  <span style={{ fontSize: 9, color: rrInfo.rr >= 2 ? '#f59e0b' : '#64748b', fontFamily: 'var(--font-mono)' }}>
-                                    ⚖️ R/R 1:{rrInfo.rr}
-                                  </span>
+                                {isExited ? (
+                                  <>
+                                    <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'var(--font-mono)' }}>
+                                      ✓ 已出場
+                                      {exitedResult?.annualReturn != null && (
+                                        <span style={{ marginLeft: 6, color: exitedResult.annualReturn >= 0 ? '#ff4d4f' : '#00c48c' }}>
+                                          年化 {exitedResult.annualReturn >= 0 ? '+' : ''}{exitedResult.annualReturn.toFixed(1)}%
+                                        </span>
+                                      )}
+                                    </span>
+                                    {lot.lesson && <span style={{ fontSize: 9, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💡 {lot.lesson}</span>}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {lot.note || ''}
+                                    </span>
+                                    {/* 動態停損徽章 */}
+                                    {tsPrice && (
+                                      <span style={{ fontSize: 9, color: tsTriggered ? '#f87171' : '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                                        {tsTriggered ? '⚠️ 停損觸發！' : `🛡 移動停損 $${tsPrice.toFixed(2)}`}
+                                        {peak > 0 && ` (峰 $${peak.toFixed(2)})`}
+                                      </span>
+                                    )}
+                                    {/* R/R 徽章 */}
+                                    {rrInfo && (
+                                      <span style={{ fontSize: 9, color: rrInfo.rr >= 2 ? '#f59e0b' : '#64748b', fontFamily: 'var(--font-mono)' }}>
+                                        ⚖️ R/R 1:{rrInfo.rr}
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -794,6 +1053,11 @@ export default function Watchlist() {
             );
           })}
         </div>
+      )}
+
+      {/* ══ Tab: 績效統計 ══════════════════════════════════════ */}
+      {activeTab === 'performance' && (
+        <PerformanceDashboard watchlist={watchlist} />
       )}
 
       {/* ══ Tab: 每日 AI 簡報 ══════════════════════════════════ */}
