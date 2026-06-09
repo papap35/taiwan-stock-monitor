@@ -83,12 +83,43 @@ export const useStockStore = create((set, get) => ({
   setHotStocks: (hotStocks) => set({ hotStocks }),
   setHotFilter: (hotFilter) => set({ hotFilter }),
 
+  // ── 自選股分群 ──────────────────────────────────────
+  // 預設群組（id 固定）+ 使用者自訂群組
+  groups: ls.get('wl_groups', [
+    { id: 'holdings',   name: '我的持股', order: 0, builtin: true },
+    { id: 'watching',   name: '觀察中',   order: 1, builtin: true },
+    { id: 'candidates', name: '候選清單', order: 2, builtin: true },
+    { id: 'short',      name: '空頭觀察', order: 3, builtin: true },
+  ]),
+
+  addGroup: (name) => set((s) => {
+    const id = `g_${Date.now()}`;
+    const updated = [...s.groups, { id, name: name.trim(), order: s.groups.length, builtin: false }];
+    ls.set('wl_groups', updated);
+    return { groups: updated };
+  }),
+
+  renameGroup: (id, name) => set((s) => {
+    const updated = s.groups.map(g => g.id === id ? { ...g, name: name.trim() } : g);
+    ls.set('wl_groups', updated);
+    return { groups: updated };
+  }),
+
+  deleteGroup: (id) => set((s) => {
+    const updated = s.groups.filter(g => g.id !== id);
+    ls.set('wl_groups', updated);
+    // 移除此群組的股票改歸到 holdings
+    const wl = s.watchlist.map(w => w.group === id ? { ...w, group: 'holdings' } : w);
+    ls.set('watchlist', wl);
+    return { groups: updated, watchlist: wl };
+  }),
+
   // ── 自選股 / 持股 ───────────────────────────────────
   watchlist: ls.get('watchlist', []),
 
   addToWatchlist: (stock) => set((s) => {
     if (s.watchlist.find(w => w.code === stock.code)) return s;
-    const updated = [...s.watchlist, stock];
+    const updated = [...s.watchlist, { group: 'holdings', ...stock }];
     ls.set('watchlist', updated);
     return { watchlist: updated };
   }),
@@ -181,14 +212,16 @@ export const useStockStore = create((set, get) => ({
   }),
 
   // ── 匯入整筆資料 ────────────────────────────────────
-  importData: ({ watchlist, alerts, settings }) => set((s) => {
+  importData: ({ watchlist, alerts, settings, groups }) => set((s) => {
     const newWatchlist = watchlist ?? s.watchlist;
     const newAlerts    = alerts    ?? s.alerts;
     const newSettings  = settings  ? { ...s.settings, ...settings } : s.settings;
+    const newGroups    = groups    ?? s.groups;
     ls.set('watchlist',     newWatchlist);
     ls.set('alerts_local',  newAlerts);
     ls.set('settings',      newSettings);
-    return { watchlist: newWatchlist, alerts: newAlerts, settings: newSettings };
+    ls.set('wl_groups',     newGroups);
+    return { watchlist: newWatchlist, alerts: newAlerts, settings: newSettings, groups: newGroups };
   }),
 
   // ── 工具 ────────────────────────────────────────────

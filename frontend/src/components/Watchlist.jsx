@@ -472,12 +472,13 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
 // ─────────────────────────────────────────────────────────────
 //  股票設定 Modal（策略、目標、停損）
 // ─────────────────────────────────────────────────────────────
-function StockSettingsModal({ item, onSave, onClose }) {
+function StockSettingsModal({ item, groups, onSave, onClose }) {
   const [form, setForm] = useState({
     strategy: item.strategy ?? 'long',
     target:   item.target   ?? '',
     stopLoss: item.stopLoss ?? '',
     notes:    item.notes    ?? '',
+    group:    item.group    ?? 'holdings',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const inp = { padding: '7px 10px', border: '1px solid var(--color-border-secondary)', borderRadius: 6, background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, width: '100%' };
@@ -523,6 +524,13 @@ function StockSettingsModal({ item, onSave, onClose }) {
             <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, marginBottom: 4 }}>備註</div>
             <input style={inp} placeholder="選填" value={form.notes} onChange={e => f('notes', e.target.value)} />
           </div>
+          {/* 群組選擇 */}
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontWeight: 700, marginBottom: 4 }}>📁 所屬群組</div>
+            <select style={{ ...inp, cursor: 'pointer' }} value={form.group} onChange={e => f('group', e.target.value)}>
+              {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -541,7 +549,10 @@ function StockSettingsModal({ item, onSave, onClose }) {
 //  主元件
 // ─────────────────────────────────────────────────────────────
 export default function Watchlist() {
-  const { watchlist, quotes, peakPrices, settings, addToWatchlist, removeFromWatchlist, updateWatchlistItem, addLot, updateLot, removeLot } = useStockStore();
+  const { watchlist, quotes, peakPrices, settings, groups,
+    addToWatchlist, removeFromWatchlist, updateWatchlistItem, addLot, updateLot, removeLot,
+    addGroup, renameGroup, deleteGroup,
+  } = useStockStore();
   const [addCode, setAddCode]     = useState('');
   const [addName, setAddName]     = useState('');
   const [addLoading, setAddLoading] = useState(false);
@@ -550,6 +561,10 @@ export default function Watchlist() {
   const [settingsModal, setSettingsModal] = useState(null);
   const [chartStock, setChartStock]       = useState(null);
   const [activeTab, setActiveTab] = useState('holdings');
+  // 群組篩選
+  const [activeGroup, setActiveGroup] = useState('all');  // 'all' | groupId
+  const [groupEditMode, setGroupEditMode] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
   const [briefType, setBriefType] = useState('open');
   const [briefText, setBriefText] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
@@ -642,6 +657,11 @@ export default function Watchlist() {
   const totalPnlAmt = totalMkt - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalMkt / totalCost - 1) * 100 : null;
 
+  // 依群組篩選（'all' = 全部）
+  const displayRows = activeGroup === 'all'
+    ? portfolioRows
+    : portfolioRows.filter(r => (r.group || 'holdings') === activeGroup);
+
   // ── 每日簡報 ─────────────────────────────────────
   const generateBrief = async () => {
     if (briefLoading || !watchlist.length) return;
@@ -693,16 +713,82 @@ export default function Watchlist() {
       {settingsModal && (
         <StockSettingsModal
           item={settingsModal}
+          groups={groups}
           onSave={(data) => { updateWatchlistItem(settingsModal.code, data); setSettingsModal(null); }}
           onClose={() => setSettingsModal(null)}
         />
       )}
 
-      {/* 投組摘要 */}
+      {/* ── 群組篩選列 ────────────────────────────────── */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* 全部 chip */}
+          <button onClick={() => setActiveGroup('all')} style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1px solid',
+            borderColor: activeGroup === 'all' ? 'var(--color-brand)' : 'var(--color-border-secondary)',
+            background:  activeGroup === 'all' ? 'rgba(59,130,246,.15)' : 'transparent',
+            color:       activeGroup === 'all' ? 'var(--color-brand)' : 'var(--color-text-tertiary)',
+          }}>
+            全部 <span style={{ fontSize: 10, opacity: .7 }}>{watchlist.length}</span>
+          </button>
+
+          {/* 各群組 chip */}
+          {groups.map(g => {
+            const cnt = watchlist.filter(w => (w.group || 'holdings') === g.id).length;
+            const active = activeGroup === g.id;
+            return (
+              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <button onClick={() => setActiveGroup(g.id)} style={{
+                  padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1px solid',
+                  borderColor: active ? '#f59e0b' : 'var(--color-border-secondary)',
+                  background:  active ? 'rgba(245,158,11,.15)' : 'transparent',
+                  color:       active ? '#f59e0b' : 'var(--color-text-tertiary)',
+                }}>
+                  {g.name} <span style={{ fontSize: 10, opacity: .7 }}>{cnt}</span>
+                </button>
+                {/* 非內建群組：重命名/刪除按鈕（編輯模式下顯示） */}
+                {groupEditMode && !g.builtin && (
+                  <>
+                    <button title="重命名" onClick={() => {
+                      const n = prompt('新名稱', g.name);
+                      if (n?.trim()) renameGroup(g.id, n);
+                    }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11, padding: '2px 4px' }}>✏️</button>
+                    <button title="刪除" onClick={() => {
+                      if (confirm(`刪除「${g.name}」？其中的股票將移至「我的持股」`)) {
+                        deleteGroup(g.id);
+                        if (activeGroup === g.id) setActiveGroup('all');
+                      }
+                    }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 11, padding: '2px 4px' }}>✕</button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {/* 新增群組 */}
+          {groupEditMode ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newGroupName.trim()) { addGroup(newGroupName); setNewGroupName(''); } }}
+                placeholder="群組名稱" style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 11, width: 90 }} />
+              <button onClick={() => { if (newGroupName.trim()) { addGroup(newGroupName); setNewGroupName(''); } }}
+                style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: 'var(--color-brand)', color: '#fff', fontSize: 11, cursor: 'pointer' }}>+</button>
+              <button onClick={() => { setGroupEditMode(false); setNewGroupName(''); }}
+                style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-tertiary)', fontSize: 11, cursor: 'pointer' }}>完成</button>
+            </div>
+          ) : (
+            <button onClick={() => setGroupEditMode(true)} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, border: '1px dashed var(--color-border-tertiary)', background: 'transparent', color: 'var(--color-text-tertiary)', cursor: 'pointer' }}>
+              ＋ 管理群組
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 投組摘要（依目前篩選的群組顯示） */}
       {watchlist.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 10 }}>
           {[
-            { label: '持股檔數', val: `${watchlist.length} 檔`,                       color: 'var(--color-brand)' },
+            { label: activeGroup === 'all' ? '持股檔數' : (groups.find(g=>g.id===activeGroup)?.name || '篩選中'), val: `${activeGroup === 'all' ? watchlist.length : watchlist.filter(w=>(w.group||'holdings')===activeGroup).length} 檔`, color: 'var(--color-brand)' },
             { label: '總市值',   val: totalMkt ? `${(totalMkt/10000).toFixed(0)}萬`   : '—', color: 'var(--color-text-secondary)' },
             { label: '總損益額', val: totalCost ? fmtAmt(totalPnlAmt)                 : '—', color: totalPnlAmt >= 0 ? '#ff4d4f' : '#00c48c' },
             { label: '整體損益', val: totalPnlPct != null ? fmtPct(totalPnlPct)        : '—', color: totalPnlPct >= 0 ? '#ff4d4f' : '#00c48c' },
@@ -738,10 +824,14 @@ export default function Watchlist() {
             <button onClick={addStock} disabled={addLoading || !addCode} className="btn btn-primary" style={{ minWidth: 80 }}>
               {addLoading ? '查詢中...' : '+ 加入追蹤'}
             </button>
-            {watchlist.length > 0 && (
-              <button onClick={() => setExpanded(prev => prev.size === watchlist.length ? new Set() : new Set(watchlist.map(w => w.code)))}
-                className="btn" style={{ fontSize: 11 }}>
-                {expanded.size === watchlist.length ? '全部收合 ▲' : '全部展開 ▼'}
+            {displayRows.length > 0 && (
+              <button onClick={() => setExpanded(prev => {
+                const visible = new Set(displayRows.map(r => r.code));
+                const allExp = displayRows.every(r => prev.has(r.code));
+                if (allExp) { const next = new Set(prev); visible.forEach(c => next.delete(c)); return next; }
+                return new Set([...prev, ...visible]);
+              })} className="btn" style={{ fontSize: 11 }}>
+                {displayRows.every(r => expanded.has(r.code)) ? '全部收合 ▲' : '全部展開 ▼'}
               </button>
             )}
           </div>
@@ -754,9 +844,15 @@ export default function Watchlist() {
               <div style={{ fontSize: 11 }}>輸入代號開始追蹤，可記錄多筆不同價格的買入記錄</div>
             </div>
           )}
+          {/* 此群組無股票 */}
+          {watchlist.length > 0 && displayRows.length === 0 && (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+              此群組尚無股票，在股票設定中選擇「{groups.find(g=>g.id===activeGroup)?.name || ''}」即可移入
+            </div>
+          )}
 
           {/* 欄位表頭 */}
-          {portfolioRows.length > 0 && (
+          {displayRows.length > 0 && (
             <div style={{
               display: 'grid',
               gridTemplateColumns: '28px 1fr 90px 90px 120px 120px 90px 80px 120px 60px 140px',
@@ -773,7 +869,7 @@ export default function Watchlist() {
           )}
 
           {/* 股票列表 */}
-          {portfolioRows.map((row) => {
+          {displayRows.map((row) => {
             const { code, name, q, price, lots, totalShares, avgCost, mktVal, pnlAmt, pnlPct, strategy, target, stopLoss, notes } = row;
             const isExp = expanded.has(code);
             const up = q?.changePercent > 0, flat = q?.changePercent === 0;
@@ -813,10 +909,14 @@ export default function Watchlist() {
                   {/* 名稱代號 */}
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{name}</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 1 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 1, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{code}</span>
                       {strat && <span style={{ fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 2, background: `${strat.color}18`, color: strat.color }}>{strat.icon}</span>}
                       {hasLots && <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)' }}>{lots.length} 筆買入</span>}
+                      {activeGroup === 'all' && (() => {
+                        const g = groups.find(g => g.id === (row.group || 'holdings'));
+                        return g ? <span style={{ fontSize: 8, padding: '0 4px', borderRadius: 2, background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>{g.name}</span> : null;
+                      })()}
                     </div>
                   </div>
 
