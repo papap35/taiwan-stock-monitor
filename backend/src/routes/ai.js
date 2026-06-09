@@ -332,6 +332,106 @@ ${typeInstruction}
   }
 });
 
+// POST /api/ai/review — 已出場交易 AI 覆盤
+router.post('/review', async (req, res) => {
+  const { code, name, lot = {}, candles = [] } = req.body;
+  if (!code) return res.status(400).json({ error: '缺少 code' });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    res.status(503).json({ error: '尚未設定 ANTHROPIC_API_KEY，AI 功能不可用' });
+    return;
+  }
+
+  const {
+    cost, shares, date: entryDate, note: entryNote,
+    exitPrice, exitDate, exitReason, lesson,
+    planTarget, planStop,
+  } = lot;
+
+  // 計算基本數字
+  const pnlAmt = exitPrice && cost ? ((exitPrice - cost) * (shares || 0)).toFixed(0) : null;
+  const pnlPct = exitPrice && cost ? (((exitPrice - cost) / cost) * 100).toFixed(2) : null;
+  const holdDays = entryDate && exitDate
+    ? Math.round((new Date(exitDate) - new Date(entryDate)) / 86400000)
+    : null;
+
+  const exitReasonMap = {
+    target: '目標到達',
+    stoploss: '停損出場',
+    technical: '技術面破壞',
+    fundamental: '基本面改變',
+    other: '其他',
+  };
+
+  // 取進出場前後各 20 根 K 棒作為背景
+  const entryTs = entryDate ? Math.floor(new Date(entryDate).getTime() / 1000) : null;
+  const exitTs  = exitDate  ? Math.floor(new Date(exitDate).getTime()  / 1000) : null;
+  let contextCandles = candles;
+  if (entryTs && candles.length) {
+    const entryIdx = candles.findIndex(c => c.time >= entryTs);
+    const exitIdx  = candles.findLastIndex ? candles.findLastIndex(c => c.time <= exitTs) : candles.length - 1;
+    const start = Math.max(0, (entryIdx >= 0 ? entryIdx : 0) - 15);
+    const end   = Math.min(candles.length, (exitIdx >= 0 ? exitIdx : candles.length - 1) + 15);
+    contextCandles = candles.slice(start, end);
+  }
+  const candlesSummary = contextCandles.slice(-40).map(c =>
+    `${c.time} O:${c.open} H:${c.high} L:${c.low} C:${c.close}`
+  ).join('\n');
+
+  const prompt = `請幫我覆盤這筆 ${name}（${code}）的交易，給出客觀專業的評估。
+
+【交易資訊】
+進場價：${cost ?? '—'}　進場日：${entryDate ?? '—'}
+出場價：${exitPrice ?? '—'}　出場日：${exitDate ?? '—'}
+損益：${pnlPct != null ? `${pnlPct >= 0 ? '+' : ''}${pnlPct}%（${pnlAmt >= 0 ? '+' : ''}${Number(pnlAmt).toLocaleString()} 元）` : '—'}
+持有天數：${holdDays ?? '—'} 天
+出場理由：${exitReasonMap[exitReason] ?? exitReason ?? '未填寫'}
+${planTarget ? `計畫目標價：${planTarget}` : ''}${planStop ? `　計畫停損：${planStop}` : ''}
+${entryNote ? `進場理由：${entryNote}` : ''}
+${lesson ? `自評筆記：${lesson}` : ''}
+
+【K 線背景（含進出場前後各約 15 根）】
+${candlesSummary || '無 K 線資料'}
+
+請依序分析：
+
+1. **進場時機評估**
+   進場位置（相對低點/高點/中段）是否合理？進場依據（${entryNote || '未填寫'}）是否充分？若有 K 線資料，指出當時的技術位置。
+
+2. **出場時機評估**
+   出場是否過早、過晚或合理？出場理由「${exitReasonMap[exitReason] ?? '未填寫'}」與實際走勢是否匹配？
+
+3. **如果重來**
+   若重做這筆交易，哪個環節可以改進？最佳的進場/加碼/出場時機應該在何處？
+
+4. **系統性改進方向**
+   這筆交易反映了哪種常見的操作偏誤（過早停利/不願停損/追高/過度自信…）？給出 1–2 條可執行的改進規則。
+
+請用繁體中文回覆，語氣直接客觀，不要過度安慰，重點在找出可改進之處。分析僅供參考。`;
+
+  initSSE(res);
+  try {
+    const stream = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1000,
+      system: '你是嚴格客觀的交易教練，擅長覆盤分析和找出系統性操作偏誤。請用繁體中文回覆，語氣直接，重點在改進，不要空洞的稱讚。分析僅供參考，不構成投資建議。',
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        writeChunk(res, chunk.delta.text);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    console.error('[AI] /review error:', err.message, err.status ?? '');
+    writeError(res, `覆盤分析失敗：${err.message}`);
+  }
+});
+
 // POST /api/ai/pattern — K 線型態辨識
 router.post('/pattern', async (req, res) => {
   const { code, name, candles = [], indicators = {} } = req.body;
