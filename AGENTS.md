@@ -191,9 +191,11 @@ cd frontend && npm run test:watch
 
 3. 在 branch 上開發，分批 commit（每個 commit 一件事）
 
-4. 開發完畢，執行自我 review（見 3.5）
+4. 開發完畢，執行自我 review（見 3.5），**包含文件同步（Step 2.5），必須在同一 branch 補 commit**
 
 5. 建立 PR（gh pr create），並等待 review 後 merge
+
+6. 若 PR 開啟後有追加 commit，執行 Step 2.6 更新 PR title / description
 ```
 
 **Branch 命名規則：**
@@ -235,7 +237,11 @@ git diff main...HEAD                 # 逐行確認沒有意外改動
 
 #### Step 2.5：文件同步檢查（每次 PR 必做）
 
-功能開發完畢後，**必須逐一確認以下 4 個 .md 檔案**是否反映此次異動：
+> ⛔ **這是硬性門檻，不是選填 checklist。**
+> `.md` 更新必須 commit 在**同一個 branch** 裡，與功能程式碼一起進 PR。
+> 不可以「先開 PR，事後再補文件」——那代表 PR 本身是不完整的。
+
+功能開發完畢後，在執行 `gh pr create` 之前，**必須逐一確認以下 4 個 .md 檔案**是否反映此次異動，並在同一個 branch 上 commit 更新：
 
 | 檔案 | 每次功能 PR 應確認的事項 |
 |------|------------------------|
@@ -250,6 +256,23 @@ git diff main...HEAD                 # 逐行確認沒有意外改動
 - 新增 API endpoint 或改變呼叫方式 → **README.md 必更新**
 - 功能完成 → **SPEC.md 必標 `[x]`**
 - 只是內部重構或 bug fix（使用者感知不到）→ .md 可不更新，但 commit message 要說明
+
+#### Step 2.6：已開 PR 追加 commit 時，同步更新 PR title / description
+
+Push 新 commit 到**已開啟的 PR** 之後，必須立即執行：
+
+```bash
+gh pr edit <PR號碼> --title "新標題" --body "新描述"
+```
+
+PR description 必須反映 **目前 branch 上所有 commit 的累積狀態**，不是只描述最新一個 commit。具體來說：
+
+- 新增了修正（fix commit）→ 在 Summary 裡補一條，或新增 `## Fixes` 區塊
+- 新增了文件更新（docs commit）→ 在 Files Changed 表格裡補上 .md 欄位
+- 功能範圍有變化 → title 視情況更新
+
+**判斷是否需要更新：**
+執行 `git log main..HEAD --oneline` 後，如果 PR description 無法完整反映這些 commit 的改動，就必須更新。
 
 #### Step 3：針對這次 PR 的 bug 風險評估
 
@@ -334,7 +357,7 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 □ 沒有 console.log 除錯碼遺留（console.warn 可接受）
 □ 沒有 hardcode 的 API key 或機密資訊
 □ SPEC.md 中對應功能的狀態已更新（若適用）
-□ 文件同步：README / USER_MANUAL / AGENTS 是否需要更新（見 3.5 Step 2.5）
+□ 文件同步：README / USER_MANUAL / AGENTS 已在本 branch 更新（見 3.5 Step 2.5）——不可事後補，必須在同一 PR 內
 ```
 
 ### 4.4 不應該 commit 的東西
