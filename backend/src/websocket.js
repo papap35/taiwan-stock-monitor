@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const cron = require('node-cron');
 const twse = require('./services/twse');
 const alertEngine = require('./services/alert-engine');
+const lineNotify = require('./services/lineNotify');
 
 let wss = null;
 let latestQuotes = {};
@@ -55,6 +56,10 @@ async function fetchAndBroadcast() {
     const triggered = alertEngine.checkQuotes(realtimeQuotes);
     if (triggered.length > 0) {
       broadcast('alerts_triggered', triggered);
+      // LINE Notify 推播（若使用者有設定 token）
+      for (const event of triggered) {
+        lineNotify.notifyAlert(event.alert, event.quote);
+      }
     }
   } catch (err) {
     console.error('[WS] fetchAndBroadcast error:', err.message);

@@ -35,8 +35,9 @@ if (process.env.NODE_ENV !== 'production') {
 // ── Routes ─────────────────────────────────────────────────────────────────
 app.use('/api/market', require('./routes/market'));
 app.use('/api/stocks', require('./routes/stocks'));
-app.use('/api/alerts', require('./routes/alerts'));
-app.use('/api/ai',     require('./routes/ai'));
+app.use('/api/alerts',   require('./routes/alerts'));
+app.use('/api/ai',      require('./routes/ai'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Health check（Railway / Render 健康檢查）
 app.get('/health', (_req, res) => {

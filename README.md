@@ -57,6 +57,11 @@
 - **K 線型態辨識**：近 60 根 K 棒送 AI，辨識頭肩、W/M 底頂、旗形、三角收斂等型態，給出壓力支撐與操作建議
 - **AI 覆盤助手**：已出場交易送 AI 分析進出場時機、找出操作偏誤、給出系統性改進方向
 
+### 📲 LINE Notify 警報推播
+- 警報觸發時即時推播 LINE 訊息（停損 / 買入 / 賣出 / 漲跌停）
+- 系統設定頁輸入個人 token 即可啟用，無需帳號系統
+- 支援測試訊息發送確認連線正常
+
 ### 🔎 條件選股掃描器
 - 13 個篩選條件（技術面 / 籌碼面 / 基本面 / 量能），AND 邏輯組合
 - 一次輸入多支代號，批次掃描，即時顯示進度條
@@ -165,6 +170,10 @@ docker-compose up --build
 | POST | /api/ai/market | AI 大盤解讀（SSE） |
 | POST | /api/ai/pattern | AI K 線型態辨識（SSE） |
 | POST | /api/ai/review | AI 交易覆盤（SSE） |
+| GET | /api/settings/line-token | 查詢 LINE Notify token 是否已設定 |
+| POST | /api/settings/line-token | 儲存 LINE Notify token |
+| DELETE | /api/settings/line-token | 清除 token |
+| POST | /api/settings/line-token/test | 發送 LINE 測試訊息 |
 
 ---
 

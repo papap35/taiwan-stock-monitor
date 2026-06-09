@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import DataManager from './DataManager';
+import { api } from '../services/api';
 
 const Row = ({ label, desc, children }) => (
   <div style={{
@@ -24,6 +26,51 @@ const sel = {
 
 export default function Settings() {
   const { settings, updateSettings, wsStatus, lastUpdated, alerts } = useStockStore();
+
+  // ── LINE Notify 狀態 ──────────────────────────────────────────
+  const [lineConfigured, setLineConfigured] = useState(false);
+  const [lineToken, setLineToken]           = useState('');
+  const [lineStatus, setLineStatus]         = useState(null); // null | 'testing' | 'ok' | 'error'
+  const [lineMsg, setLineMsg]               = useState('');
+  const [lineSaving, setLineSaving]         = useState(false);
+
+  useEffect(() => {
+    api.getLineTokenStatus().then(r => setLineConfigured(r.configured)).catch(() => {});
+  }, []);
+
+  const handleSaveToken = async () => {
+    if (!lineToken.trim()) return;
+    setLineSaving(true);
+    try {
+      await api.setLineToken(lineToken.trim());
+      setLineConfigured(true);
+      setLineToken('');
+      setLineMsg('');
+    } catch (e) {
+      setLineMsg('儲存失敗：' + e.message);
+    } finally {
+      setLineSaving(false);
+    }
+  };
+
+  const handleClearToken = async () => {
+    await api.clearLineToken().catch(() => {});
+    setLineConfigured(false);
+    setLineMsg('');
+  };
+
+  const handleTestLine = async () => {
+    setLineStatus('testing');
+    setLineMsg('');
+    try {
+      await api.testLineNotify();
+      setLineStatus('ok');
+      setLineMsg('測試訊息已送出，請查看 LINE！');
+    } catch (e) {
+      setLineStatus('error');
+      setLineMsg(e.message);
+    }
+  };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
@@ -89,6 +136,66 @@ export default function Settings() {
             </label>
           </Row>
         ))}
+      </div>
+
+      {/* LINE Notify */}
+      <div style={{ gridColumn: '1 / -1', background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+        <div className="section-label">LINE Notify 推播</div>
+
+        {/* 說明 */}
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 12, lineHeight: 1.7 }}>
+          警報觸發時自動推播 LINE 訊息。請先至{' '}
+          <a href="https://notify-bot.line.me/" target="_blank" rel="noreferrer"
+            style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>
+            notify-bot.line.me
+          </a>{' '}
+          登入並建立個人存取權杖（Personal Access Token），再貼到下方。
+        </div>
+
+        {lineConfigured ? (
+          /* 已設定狀態 */
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#00c48c', fontWeight: 600 }}>
+              <span>✅</span> Token 已設定
+            </div>
+            <button onClick={handleTestLine} disabled={lineStatus === 'testing'}
+              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 5, cursor: 'pointer',
+                border: '1px solid var(--color-brand)', background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)' }}>
+              {lineStatus === 'testing' ? '發送中…' : '📩 發送測試訊息'}
+            </button>
+            <button onClick={handleClearToken}
+              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 5, cursor: 'pointer',
+                border: '1px solid #ef4444', background: 'transparent', color: '#ef4444' }}>
+              移除 Token
+            </button>
+            {lineMsg && (
+              <span style={{ fontSize: 11, color: lineStatus === 'ok' ? '#00c48c' : '#ef4444' }}>
+                {lineMsg}
+              </span>
+            )}
+          </div>
+        ) : (
+          /* 未設定狀態 */
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <input
+              type="password"
+              value={lineToken}
+              onChange={e => setLineToken(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSaveToken()}
+              placeholder="貼上 LINE Notify Personal Access Token"
+              style={{ flex: 1, minWidth: 220, padding: '7px 10px', fontSize: 12,
+                background: '#0a1018', border: '1px solid var(--color-border-tertiary)',
+                borderRadius: 6, color: '#e2e8f0', fontFamily: 'var(--font-mono)' }}
+            />
+            <button onClick={handleSaveToken} disabled={lineSaving || !lineToken.trim()}
+              style={{ fontSize: 12, padding: '7px 16px', borderRadius: 6, cursor: lineSaving || !lineToken.trim() ? 'not-allowed' : 'pointer',
+                border: '1px solid var(--color-brand)', background: lineToken.trim() ? 'rgba(59,130,246,.15)' : 'transparent',
+                color: lineToken.trim() ? 'var(--color-brand)' : 'var(--color-text-tertiary)', fontWeight: 600 }}>
+              {lineSaving ? '儲存中…' : '儲存'}
+            </button>
+            {lineMsg && <div style={{ width: '100%', fontSize: 11, color: '#ef4444' }}>{lineMsg}</div>}
+          </div>
+        )}
       </div>
 
       {/* 資料管理（跨欄）*/}

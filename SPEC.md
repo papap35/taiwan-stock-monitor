@@ -297,7 +297,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 18. LINE Notify 警報推播
+#### 18. LINE Notify 警報推播 `[x]`
 
 **背景**：瀏覽器通知容易錯過；LINE 是台灣最普及的即時通訊，開盤時最常用手機。
 
