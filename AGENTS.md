@@ -103,9 +103,16 @@ const pnlPct = (mktVal / totalCost - 1) * 100;
 
 ### 2.1 測試涵蓋範圍
 
-- `utils/` 下的每一個 exported 函式**都必須有對應測試**。
+**前端：**
+- `frontend/src/utils/` 下的每一個 exported 函式**都必須有對應測試**。
 - 新增函式 → 同一個 PR/commit 內必須附上測試，不能事後補。
 - UI 元件邏輯提取到 utils 後，測試寫在 utils 層，不寫元件整合測試（避免測試與實作緊耦合）。
+
+**後端：**
+- `backend/src/utils/` 下的每一個 exported 函式**都必須有對應測試**（與前端相同規則）。
+- Route handler 裡**禁止包含純計算邏輯**（損益計算、資料切片、條件判斷…）。有純計算就抽到 `backend/src/utils/`，再從 handler 呼叫，並補測試。
+- `services/` 裡含有純邏輯的 method（如 `AlertEngine.checkQuotes`、`_buildMessage`）也必須測試，測試放在 `backend/src/__tests__/`。
+- 後端測試執行方式：`cd backend && node --test src/__tests__/*.test.js`
 
 ### 2.2 測試結構
 
@@ -165,14 +172,17 @@ it('hasPrice 為 false 時跳過計算', () => { ... });
 ### 2.6 執行測試
 
 ```bash
-# 單次執行（CI / commit 前）
+# 前端測試（單次執行，CI / commit 前）
 cd frontend && npm test
 
-# 監看模式（開發中）
+# 前端測試（監看模式，開發中）
 cd frontend && npm run test:watch
+
+# 後端測試
+cd backend && node --test src/__tests__/*.test.js
 ```
 
-**每次 commit 前必須確認測試全數通過**（0 failed）。
+**每次 commit 前，前端和後端測試都必須全數通過**（0 failed）。
 
 ---
 
@@ -350,9 +360,11 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 ### 4.3 commit 前檢查清單
 
 ```
-□ npm test 通過（0 failed）
+□ 前端：npm test 通過（0 failed）
+□ 後端：node --test src/__tests__/*.test.js 通過（0 failed）
 □ npm run build 無 error（warning 可接受）
-□ 新功能有對應測試
+□ 新功能有對應測試（前端 utils/ 函式 + 後端 utils/ 與 services/ 純邏輯）
+□ Route handler 內無 inline 純計算邏輯（已抽至 utils/）
 □ 新的 bug fix 有防迴歸測試
 □ 沒有 console.log 除錯碼遺留（console.warn 可接受）
 □ 沒有 hardcode 的 API key 或機密資訊
