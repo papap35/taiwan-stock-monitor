@@ -269,10 +269,20 @@ git diff main...HEAD                 # 逐行確認沒有意外改動
 
 #### Step 2.6：已開 PR 追加 commit 時，同步更新 PR title / description
 
-Push 新 commit 到**已開啟的 PR** 之後，必須立即執行：
+Push 新 commit 到**已開啟的 PR** 之後，必須立即執行。
 
-```bash
-gh pr edit <PR號碼> --title "新標題" --body "新描述"
+**⚠️ 在 Windows PowerShell 環境下，禁止用 `--body` 直接傳字串**（反引號會被 PowerShell 當跳脫字元，導致 ` ``` ` code block 變成亂碼）。
+
+**正確做法**：用 Write 工具把 description 寫成暫存 `_pr_body.md`，再用 `--body-file` 傳入，最後刪除暫存檔：
+
+```powershell
+# 1. 用 Write 工具建立 _pr_body.md（內容包含完整 markdown）
+# 2. 執行：
+gh pr create --title "標題" --body-file _pr_body.md
+# 或：
+gh pr edit <PR號碼> --title "新標題" --body-file _pr_body.md
+# 3. 刪除暫存檔：
+Remove-Item _pr_body.md
 ```
 
 **PR description 原則**：目標是讓 reviewer 能看懂「做了什麼、為什麼、怎麼測、有沒有風險」。區塊視實際需要加減，**寧可多寫也不要漏掉重要資訊**。

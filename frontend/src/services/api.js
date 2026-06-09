@@ -39,6 +39,12 @@ export const api = {
   deleteAlert: (id) => apiFetch(`/api/alerts/${id}`, { method: 'DELETE' }),
   clearTriggered: () => apiFetch('/api/alerts/triggered/clear', { method: 'DELETE' }),
 
+  // LINE Notify 設定
+  getLineTokenStatus: () => apiFetch('/api/settings/line-token'),
+  setLineToken: (token) => apiFetch('/api/settings/line-token', { method: 'POST', body: JSON.stringify({ token }) }),
+  clearLineToken: () => apiFetch('/api/settings/line-token', { method: 'DELETE' }),
+  testLineNotify: () => apiFetch('/api/settings/line-token/test', { method: 'POST' }),
+
   // AI 分析（SSE streaming）
   analyzePortfolio: (holdings, type, onChunk, onDone) => {
     return fetchSSE('/api/ai/portfolio', { holdings, type }, onChunk, onDone);
