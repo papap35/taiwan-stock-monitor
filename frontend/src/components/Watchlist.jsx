@@ -236,10 +236,10 @@ function AIReviewModal({ code, name, lot, text, loading, onStart, onClose }) {
     target: '目標到達', stoploss: '停損出場',
     technical: '技術面破壞', fundamental: '基本面改變', other: '其他',
   };
-  const pnl = lot.exitPrice && lot.cost
-    ? (((lot.exitPrice - lot.cost) / lot.cost) * 100).toFixed(2) : null;
-  const pnlAmt = lot.exitPrice && lot.cost
-    ? ((lot.exitPrice - lot.cost) * (lot.shares || 0) * 1000).toFixed(0) : null;
+  // 使用 calcExitedLot 統一計算，避免重複邏輯
+  const exitedResult = lot.exitPrice ? calcExitedLot(lot) : null;
+  const pnl    = exitedResult?.pnlPct ?? null;
+  const pnlAmt = exitedResult?.pnlAmt ?? null;
 
   const renderText = (t) =>
     t.split(/(\*\*[^*]+\*\*)/).map((seg, i) =>

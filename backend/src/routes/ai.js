@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const twse = require('../services/twse');
+const { calcLotReviewStats, sliceContextCandles, calcPatternStats } = require('../utils/aiHelpers');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -347,12 +348,8 @@ router.post('/review', async (req, res) => {
     planTarget, planStop,
   } = lot;
 
-  // 計算基本數字
-  const pnlAmt = exitPrice && cost ? ((exitPrice - cost) * (shares || 0)).toFixed(0) : null;
-  const pnlPct = exitPrice && cost ? (((exitPrice - cost) / cost) * 100).toFixed(2) : null;
-  const holdDays = entryDate && exitDate
-    ? Math.round((new Date(exitDate) - new Date(entryDate)) / 86400000)
-    : null;
+  // 計算基本數字（使用 aiHelpers 純函式）
+  const { pnlPct, pnlAmt, holdDays } = calcLotReviewStats(lot);
 
   const exitReasonMap = {
     target: '目標到達',
@@ -362,17 +359,9 @@ router.post('/review', async (req, res) => {
     other: '其他',
   };
 
-  // 取進出場前後各 20 根 K 棒作為背景
-  const entryTs = entryDate ? Math.floor(new Date(entryDate).getTime() / 1000) : null;
-  const exitTs  = exitDate  ? Math.floor(new Date(exitDate).getTime()  / 1000) : null;
-  let contextCandles = candles;
-  if (entryTs && candles.length) {
-    const entryIdx = candles.findIndex(c => c.time >= entryTs);
-    const exitIdx  = candles.findLastIndex ? candles.findLastIndex(c => c.time <= exitTs) : candles.length - 1;
-    const start = Math.max(0, (entryIdx >= 0 ? entryIdx : 0) - 15);
-    const end   = Math.min(candles.length, (exitIdx >= 0 ? exitIdx : candles.length - 1) + 15);
-    contextCandles = candles.slice(start, end);
-  }
+  // 取進出場前後各 15 根 K 棒作為背景（使用 aiHelpers 純函式）
+  const contextCandles = sliceContextCandles(candles, entryDate, exitDate, 15);
+
   const candlesSummary = contextCandles.slice(-40).map(c =>
     `${c.time} O:${c.open} H:${c.high} L:${c.low} C:${c.close}`
   ).join('\n');
@@ -451,11 +440,9 @@ router.post('/pattern', async (req, res) => {
     `${c.time} O:${c.open} H:${c.high} L:${c.low} C:${c.close} V:${Math.round(c.volume/1000)}K`
   ).join('\n');
 
-  // 計算簡單趨勢資訊
-  const closes = recent.map(c => c.close);
-  const high60 = Math.max(...recent.map(c => c.high));
-  const low60  = Math.min(...recent.map(c => c.low));
-  const pricePos = last ? (((last.close - low60) / (high60 - low60)) * 100).toFixed(1) : '—';
+  // 計算趨勢統計（使用 aiHelpers 純函式）
+  const { high: high60, low: low60, pricePosPct } = calcPatternStats(recent);
+  const pricePos = pricePosPct ?? '—';
 
   const indStr = Object.entries(indicators)
     .filter(([, v]) => v != null)
