@@ -275,6 +275,28 @@ Push 新 commit 到**已開啟的 PR** 之後，必須立即執行：
 gh pr edit <PR號碼> --title "新標題" --body "新描述"
 ```
 
+**PR description 原則**：目標是讓 reviewer 能看懂「做了什麼、為什麼、怎麼測、有沒有風險」。區塊視實際需要加減，**寧可多寫也不要漏掉重要資訊**。
+
+常用區塊（依需要取捨）：
+
+```
+## Summary
+- **功能名稱**：一句話說明做了什麼
+- 其他重點變更（測試、規範、文件）
+
+## 功能說明          ← 有新 UI / 流程時加，用表格列出各功能點
+## 測試明細          ← 有新增測試檔時加，列出檔案、測試數、涵蓋內容
+## Files Changed    ← 每個異動檔案一行說明做了什麼
+## How to Test      ← reviewer 要怎麼手動驗證，逐步操作說明
+## Known Issues     ← 已知限制、邊界 case、刻意不處理的 trade-off
+## TODO             ← 這支 PR 沒做但後續要跟進的事
+## Test             ← 自動測試結果（Frontend N passed ✅ / Backend N passed ✅）
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+> `## Summary` 和 `## Files Changed` 是必填。其餘區塊有內容才加，沒有就省略，不要寫空區塊。
+
 PR description 必須反映 **目前 branch 上所有 commit 的累積狀態**，不是只描述最新一個 commit。具體來說：
 
 - 新增了修正（fix commit）→ 在 Summary 裡補一條，或新增 `## Fixes` 區塊

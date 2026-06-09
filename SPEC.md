@@ -251,7 +251,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ### P4 — 選股工具（主動找標的）
 
-#### 15. 條件選股掃描器（Stock Scanner）
+#### 15. 條件選股掃描器（Stock Scanner）`[x]`
 
 **背景**：主動找符合條件的股票，而非被動等消息或靠運氣。
 

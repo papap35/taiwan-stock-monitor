@@ -10,6 +10,7 @@ import AIAnalysis from './components/AIAnalysis';
 import Settings from './components/Settings';
 import MarketTicker from './components/MarketTicker';
 import Chips from './components/Chips';
+import Scanner from './components/Scanner';
 
 const TABS = [
   { id: 'home',     label: '首頁',     icon: '🏠' },
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'chips',    label: '籌碼分析', icon: '🧩' },
   { id: 'alerts',   label: '警報設定', icon: '🔔' },
   { id: 'ai',       label: 'AI 分析',  icon: '🤖' },
+  { id: 'scanner',  label: '條件選股', icon: '🔎' },
   { id: 'settings', label: '系統設定', icon: '⚙️' },
 ];
 
@@ -205,6 +207,7 @@ export default function App() {
         {activeTab === 'chips'    && <Chips />}
         {activeTab === 'alerts'   && <Alerts />}
         {activeTab === 'ai'       && <AIAnalysis />}
+        {activeTab === 'scanner'  && <Scanner />}
         {activeTab === 'settings' && <Settings />}
       </main>
 
