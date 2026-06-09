@@ -90,6 +90,15 @@ const CHART_PERIODS = [
 const fmtN = n => n == null ? '—' : n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
 const fmtColor = n => n > 0 ? '#ff4d4f' : n < 0 ? '#00c48c' : '#64748b';
 
+const MA_DEFS = [
+  { key: 'ma5',   period: 5,   label: 'MA5',   color: '#e2e8f0' },
+  { key: 'ma10',  period: 10,  label: 'MA10',  color: '#facc15' },
+  { key: 'ma20',  period: 20,  label: 'MA20',  color: '#f97316' },
+  { key: 'ma60',  period: 60,  label: 'MA60',  color: '#8b5cf6' },
+  { key: 'ma120', period: 120, label: 'MA120', color: '#3b82f6' },
+  { key: 'ma240', period: 240, label: 'MA240', color: '#ef4444' },
+];
+
 export default function StockChart({ stock, onClose }) {
   const mainRef = useRef(null);
   const subRef = useRef(null);
@@ -108,6 +117,10 @@ export default function StockChart({ stock, onClose }) {
   const [indicator, setIndicator] = useState('KD');
   const [mainTab, setMainTab] = useState('K線');
   const [chartPeriod, setChartPeriod] = useState('D'); // 'D' | 'W' | 'M'
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiLoading, setAiLoading]     = useState(false);
+  const [aiText, setAiText]           = useState('');
+  const aiAbortRef = useRef(null);
 
   const { quotes } = useStockStore();
   const q = quotes[stock.code];
@@ -279,16 +292,6 @@ export default function StockChart({ stock, onClose }) {
   }, [onClose]);
 
   // ── 統計摘要 ──────────────────────────────────────
-  // MA 定義表（供統計列 & 工具列共用）
-  const MA_DEFS = [
-    { key: 'ma5',   period: 5,   label: 'MA5',   color: '#e2e8f0' },
-    { key: 'ma10',  period: 10,  label: 'MA10',  color: '#facc15' },
-    { key: 'ma20',  period: 20,  label: 'MA20',  color: '#f97316' },
-    { key: 'ma60',  period: 60,  label: 'MA60',  color: '#8b5cf6' },
-    { key: 'ma120', period: 120, label: 'MA120', color: '#3b82f6' },
-    { key: 'ma240', period: 240, label: 'MA240', color: '#ef4444' },
-  ];
-
   const stats = displayCandles.length > 0 ? (() => {
     const last  = displayCandles[displayCandles.length - 1];
     const high  = Math.max(...displayCandles.map(c => c.high));
@@ -306,6 +309,50 @@ export default function StockChart({ stock, onClose }) {
     return { last, high, low, maValues, volRatio, latestBB };
   })() : null;
 
+  // ── AI 型態辨識 ───────────────────────────────────
+  const runAIPattern = useCallback(async () => {
+    if (aiLoading || displayCandles.length === 0) return;
+    setAiLoading(true);
+    setAiText('');
+    setShowAIPanel(true);
+
+    // 收集當前技術指標值
+    const maValues = {};
+    MA_DEFS.forEach(({ key, period }) => {
+      if (showMA[key] && displayCandles.length >= period) {
+        maValues[key] = +(displayCandles.slice(-period).reduce((s, c) => s + c.close, 0) / period).toFixed(2);
+      }
+    });
+    const vr = calcVolumeRatio(displayCandles, 5);
+    const indicators = {
+      ...maValues,
+      ...(vr != null ? { 量比: vr } : {}),
+    };
+    if (showBB && displayCandles.length >= 20) {
+      const bb = calcBollingerBands(displayCandles, 20, 2);
+      if (bb.length) {
+        const lb = bb[bb.length - 1];
+        indicators['BB上軌'] = lb.upper;
+        indicators['BB下軌'] = lb.lower;
+        indicators['BB帶寬%'] = lb.bandwidth;
+      }
+    }
+
+    try {
+      await api.analyzePattern(
+        stock.code,
+        stock.name,
+        displayCandles,
+        indicators,
+        (chunk) => setAiText(t => t + chunk),
+        () => setAiLoading(false),
+      );
+    } catch {
+      setAiText('⚠️ 分析失敗，請確認後端 API Key 是否設定。');
+      setAiLoading(false);
+    }
+  }, [aiLoading, displayCandles, showMA, showBB, stock.code, stock.name]);
+
   // ── 最新法人資料 ───────────────────────────────────
   const latestInst = instData.length > 0 ? instData[instData.length - 1] : null;
   const latestMargin = marginData.length > 0 ? marginData[marginData.length - 1] : null;
@@ -318,7 +365,7 @@ export default function StockChart({ stock, onClose }) {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(4px)' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div style={{ background: '#0f1923', border: '1px solid #1e2d40', borderRadius: 10, width: '100%', maxWidth: 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.8)' }} className="fade-in">
+      <div style={{ background: '#0f1923', border: '1px solid #1e2d40', borderRadius: 10, width: '100%', maxWidth: showAIPanel ? 1260 : 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.8)', transition: 'max-width .25s ease' }} className="fade-in">
 
         {/* ── 標題列 ───────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
@@ -379,6 +426,19 @@ export default function StockChart({ stock, onClose }) {
                   color: showBB ? '#a78bfa' : '#475569',
                   cursor: 'pointer', opacity: showBB ? 1 : .5 }}>
                 BB
+              </button>
+              <div style={{ width: 1, height: 14, background: '#1e2d40', margin: '0 2px' }} />
+              <button
+                onClick={showAIPanel ? () => setShowAIPanel(false) : runAIPattern}
+                disabled={aiLoading}
+                style={{ padding: '2px 9px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                  border: `1px solid ${showAIPanel ? '#0ea5e9' : '#1e2d40'}`,
+                  background: showAIPanel ? 'rgba(14,165,233,.15)' : 'transparent',
+                  color: showAIPanel ? '#0ea5e9' : '#475569',
+                  cursor: aiLoading ? 'wait' : 'pointer',
+                  opacity: aiLoading ? .7 : 1,
+                  display: 'flex', alignItems: 'center', gap: 3 }}>
+                {aiLoading ? '⏳' : '🤖'} AI 型態
               </button>
             </div>
           )}
@@ -455,19 +515,84 @@ export default function StockChart({ stock, onClose }) {
 
           {/* K 線 Tab */}
           {mainTab === 'K線' && (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div ref={mainRef} style={{ flex: 1 }} />
-              {indicator !== 'OFF' && (
-                <>
-                  <div style={{ height: 1, background: '#1a2535', flexShrink: 0 }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 10px', background: '#0d1520', flexShrink: 0 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: '#475569', letterSpacing: '.06em' }}>{indicator}</span>
-                    {indicator === 'KD' && <><span style={{ fontSize: 9, color: '#f59e0b' }}>● K</span><span style={{ fontSize: 9, color: '#3b82f6' }}>● D</span><span style={{ fontSize: 9, color: '#475569' }}>超買80 / 超賣20</span></>}
-                    {indicator === 'RSI' && <><span style={{ fontSize: 9, color: '#a78bfa' }}>● RSI(14)</span><span style={{ fontSize: 9, color: '#475569' }}>超買70 / 超賣30</span></>}
-                    {indicator === 'MACD' && <><span style={{ fontSize: 9, color: '#3b82f6' }}>● MACD(12,26)</span><span style={{ fontSize: 9, color: '#f59e0b' }}>● Signal(9)</span></>}
+            <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              {/* 圖表區 — 右側留出面板寬度 */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, marginRight: showAIPanel ? 300 : 0, transition: 'margin-right .25s ease' }}>
+                <div ref={mainRef} style={{ flex: 1 }} />
+                {indicator !== 'OFF' && (
+                  <>
+                    <div style={{ height: 1, background: '#1a2535', flexShrink: 0 }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 10px', background: '#0d1520', flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#475569', letterSpacing: '.06em' }}>{indicator}</span>
+                      {indicator === 'KD' && <><span style={{ fontSize: 9, color: '#f59e0b' }}>● K</span><span style={{ fontSize: 9, color: '#3b82f6' }}>● D</span><span style={{ fontSize: 9, color: '#475569' }}>超買80 / 超賣20</span></>}
+                      {indicator === 'RSI' && <><span style={{ fontSize: 9, color: '#a78bfa' }}>● RSI(14)</span><span style={{ fontSize: 9, color: '#475569' }}>超買70 / 超賣30</span></>}
+                      {indicator === 'MACD' && <><span style={{ fontSize: 9, color: '#3b82f6' }}>● MACD(12,26)</span><span style={{ fontSize: 9, color: '#f59e0b' }}>● Signal(9)</span></>}
+                    </div>
+                    <div ref={subRef} style={{ height: 100, flexShrink: 0 }} />
+                  </>
+                )}
+              </div>
+
+              {/* AI 型態分析面板 — absolute 不影響父層高度 */}
+              {showAIPanel && (
+                <div style={{
+                  position: 'absolute', top: 0, right: 0, bottom: 0,
+                  width: 300,
+                  borderLeft: '1px solid #1a2535',
+                  background: '#0a1018',
+                  display: 'flex', flexDirection: 'column',
+                  overflow: 'hidden',
+                }}>
+                  {/* 面板標題 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9', flex: 1 }}>🤖 AI 型態分析</span>
+                    {aiLoading && (
+                      <span style={{ fontSize: 9, color: '#475569' }}>分析中...</span>
+                    )}
+                    {!aiLoading && aiText && (
+                      <button
+                        onClick={runAIPattern}
+                        style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, border: '1px solid #1e2d40', background: 'transparent', color: '#475569', cursor: 'pointer' }}>
+                        重新分析
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowAIPanel(false)}
+                      style={{ width: 18, height: 18, borderRadius: 3, border: '1px solid #1e2d40', background: 'transparent', color: '#475569', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      ×
+                    </button>
                   </div>
-                  <div ref={subRef} style={{ height: 100, flexShrink: 0 }} />
-                </>
+
+                  {/* 分析內容 */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+                    {!aiText && aiLoading && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 20 }}>
+                        {[100, 85, 92, 70].map((w, i) => (
+                          <div key={i} style={{ height: 8, borderRadius: 4, background: '#1e2d40', width: `${w}%`, animation: 'pulse 1.5s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                    )}
+                    {aiText && (
+                      <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+                        {/* 把 **粗體** 語法渲染出來 */}
+                        {aiText.split(/(\*\*[^*]+\*\*)/).map((seg, i) =>
+                          seg.startsWith('**') && seg.endsWith('**')
+                            ? <strong key={i} style={{ color: '#e2e8f0', fontWeight: 700 }}>{seg.slice(2, -2)}</strong>
+                            : <span key={i}>{seg}</span>
+                        )}
+                        {aiLoading && <span style={{ display: 'inline-block', width: 6, height: 12, background: '#0ea5e9', marginLeft: 2, animation: 'pulse 1s ease-in-out infinite', verticalAlign: 'middle' }} />}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 說明 */}
+                  <div style={{ padding: '6px 12px', borderTop: '1px solid #1a2535', flexShrink: 0 }}>
+                    <div style={{ fontSize: 9, color: '#334155', lineHeight: 1.5 }}>
+                      以最近 {Math.min(displayCandles.length, 60)} 根 {chartPeriod === 'D' ? '日' : chartPeriod === 'W' ? '週' : '月'}K 為依據<br />
+                      分析僅供參考，不構成投資建議
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}

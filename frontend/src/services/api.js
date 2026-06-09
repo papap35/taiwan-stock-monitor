@@ -49,6 +49,9 @@ export const api = {
   analyzeMarket: (taiex, breadth, onChunk, onDone) => {
     return fetchSSE('/api/ai/market', { taiex, breadth }, onChunk, onDone);
   },
+  analyzePattern: (code, name, candles, indicators, onChunk, onDone) => {
+    return fetchSSE('/api/ai/pattern', { code, name, candles, indicators }, onChunk, onDone);
+  },
 };
 
 /**
