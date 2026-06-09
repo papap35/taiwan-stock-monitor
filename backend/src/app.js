@@ -39,6 +39,7 @@ app.use('/api/alerts',   require('./routes/alerts'));
 app.use('/api/ai',      require('./routes/ai'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/calendar', require('./routes/calendar'));
+app.use('/api/sync',     require('./routes/sync'));
 
 // Health check（Railway / Render 健康檢查）
 app.get('/health', (_req, res) => {

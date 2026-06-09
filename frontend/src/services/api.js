@@ -57,6 +57,13 @@ export const api = {
   setAutoReportSettings: (settings) => apiFetch('/api/settings/auto-report', { method: 'POST', body: JSON.stringify(settings) }),
   triggerAutoReport: (type = 'pre') => apiFetch('/api/settings/auto-report/trigger', { method: 'POST', body: JSON.stringify({ type }) }),
 
+  // 雲端同步（Supabase）
+  getSyncStatus:  () => apiFetch('/api/sync/status'),
+  syncPull:       () => apiFetch('/api/sync/pull'),
+  syncPush:       (data) => apiFetch('/api/sync/push', { method: 'POST', body: JSON.stringify(data) }),
+  syncPushWatchlist: (watchlist) => apiFetch('/api/sync/push/watchlist', { method: 'POST', body: JSON.stringify({ watchlist }) }),
+  syncPushAlerts:    (alerts)    => apiFetch('/api/sync/push/alerts',    { method: 'POST', body: JSON.stringify({ alerts }) }),
+
   // AI 分析（SSE streaming）
   analyzePortfolio: (holdings, type, onChunk, onDone) => {
     return fetchSSE('/api/ai/portfolio', { holdings, type }, onChunk, onDone);

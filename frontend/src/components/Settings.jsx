@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import DataManager from './DataManager';
 import { api } from '../services/api';
+import { useCloudSync } from '../hooks/useCloudSync';
 
 const Row = ({ label, desc, children }) => (
   <div style={{
@@ -71,6 +72,9 @@ export default function Settings() {
     setAutoReport(next);
     await api.setAutoReportSettings(next).catch(() => {});
   };
+
+  // ── 雲端同步 ──────────────────────────────────────────────────
+  const { enabled: syncEnabled, syncing, lastSyncAt, error: syncError, push: syncPush, pull: syncPull } = useCloudSync();
 
   const handleTriggerReport = async (type) => {
     try {
@@ -285,6 +289,58 @@ export default function Settings() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 雲端同步（Supabase）*/}
+      <div style={{ gridColumn: '1 / -1', background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+        <div className="section-label">☁️ 雲端同步（Supabase）</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 12, lineHeight: 1.7 }}>
+          將自選股、警報、設定備份至 Supabase，換裝置或清除快取後可快速還原。
+          需在後端 <code style={{ fontFamily: 'var(--font-mono)' }}>.env</code> 設定{' '}
+          <code style={{ fontFamily: 'var(--font-mono)' }}>SUPABASE_URL</code> 與{' '}
+          <code style={{ fontFamily: 'var(--font-mono)' }}>SUPABASE_SERVICE_KEY</code>。
+        </div>
+
+        {!syncEnabled ? (
+          <div style={{ fontSize: 12, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚠️ Supabase 尚未設定，雲端同步功能停用
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* 上次同步時間 */}
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+              上次同步：{lastSyncAt
+                ? new Date(lastSyncAt).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : '尚未同步'}
+            </div>
+
+            {/* 按鈕列 */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={syncPush}
+                disabled={syncing}
+                style={{ fontSize: 12, padding: '7px 18px', borderRadius: 6, cursor: syncing ? 'not-allowed' : 'pointer',
+                  border: '1px solid var(--color-brand)', background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)', fontWeight: 600 }}>
+                {syncing ? '同步中…' : '⬆ 推送到雲端'}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!window.confirm('從雲端拉取資料將覆蓋本機所有設定，確定繼續？')) return;
+                  await syncPull();
+                }}
+                disabled={syncing}
+                style={{ fontSize: 12, padding: '7px 18px', borderRadius: 6, cursor: syncing ? 'not-allowed' : 'pointer',
+                  border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)' }}>
+                {syncing ? '同步中…' : '⬇ 從雲端還原'}
+              </button>
+            </div>
+
+            {/* 錯誤訊息 */}
+            {syncError && (
+              <div style={{ fontSize: 11, color: '#ef4444' }}>❌ {syncError}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 資料管理（跨欄）*/}

@@ -284,16 +284,18 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ### P5 — 基礎設施（長期使用必備）
 
-#### 17. 雲端同步（Supabase）
+#### 17. 雲端同步（Supabase）`[x]`
 
 **背景**：目前資料存在 LocalStorage，換裝置或清瀏覽器資料消失。
 
-**功能規格**：
-- 整合 Supabase PostgreSQL（免費 500MB，足夠個人使用）
-- 同步資料：watchlist、lots、alerts、trade journal
-- 策略：**離線優先**（LocalStorage 為主，有網路時同步到 Supabase）
-- 衝突解決：以「最後修改時間戳」為準（Last Write Wins）
-- 認證：Supabase Auth（Google/GitHub OAuth，無需自建帳號系統）
+**已實作**：
+- Supabase PostgreSQL（4 張表：watchlist / groups / alerts / settings）
+- 同步資料：watchlist、lots、alerts、settings、groups
+- 策略：**離線優先**（LocalStorage 為主，手動 push/pull 到 Supabase）
+- 後端作為中介（`/api/sync/*`），key 不暴露前端
+- 設定頁提供「⬆ 推送到雲端」/ 「⬇ 從雲端還原」按鈕
+- 顯示上次同步時間
+- migration SQL：`supabase_migration.sql`
 
 ---
 
