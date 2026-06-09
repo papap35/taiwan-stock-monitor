@@ -59,6 +59,28 @@ export default function Settings() {
     setLineMsg('');
   };
 
+  // ── 自動簡報開關 ──────────────────────────────────────────────
+  const [autoReport, setAutoReport] = useState({ preMarketEnabled: false, postMarketEnabled: false });
+
+  useEffect(() => {
+    api.getAutoReportSettings().then(r => setAutoReport(r)).catch(() => {});
+  }, []);
+
+  const toggleAutoReport = async (key) => {
+    const next = { ...autoReport, [key]: !autoReport[key] };
+    setAutoReport(next);
+    await api.setAutoReportSettings(next).catch(() => {});
+  };
+
+  const handleTriggerReport = async (type) => {
+    try {
+      await api.triggerAutoReport(type);
+      alert(`${type === 'pre' ? '盤前' : '盤後'}簡報已觸發，請查看 LINE！`);
+    } catch (e) {
+      alert('觸發失敗：' + e.message);
+    }
+  };
+
   const handleTestLine = async () => {
     setLineStatus('testing');
     setLineMsg('');
@@ -196,6 +218,73 @@ export default function Settings() {
             {lineMsg && <div style={{ width: '100%', fontSize: 11, color: '#ef4444' }}>{lineMsg}</div>}
           </div>
         )}
+      </div>
+
+      {/* 自動 AI 簡報排程 */}
+      <div style={{ gridColumn: '1 / -1', background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+        <div className="section-label">自動 AI 簡報排程</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 12, lineHeight: 1.7 }}>
+          每個交易日自動生成 AI 市場簡報並推播至 LINE（需先設定 LINE Notify token 及 Claude API Key）
+        </div>
+
+        {[
+          {
+            key: 'preMarketEnabled',
+            label: '盤前簡報',
+            time: '08:45',
+            desc: '整合前日法人籌碼 + 國際市場，給出今日操作基調',
+            type: 'pre',
+          },
+          {
+            key: 'postMarketEnabled',
+            label: '盤後總結',
+            time: '13:35',
+            desc: '今日大盤覆盤 + 法人動向 + 明日展望',
+            type: 'post',
+          },
+        ].map(item => (
+          <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</span>
+                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)', fontFamily: 'var(--font-mono)' }}>
+                  {item.time} 台灣時間
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{item.desc}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {autoReport[item.key] && (
+                <button
+                  onClick={() => handleTriggerReport(item.type)}
+                  style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+                    border: '1px solid rgba(100,116,139,.4)', background: 'transparent', color: 'var(--color-text-tertiary)' }}>
+                  立即觸發
+                </button>
+              )}
+              {/* Toggle */}
+              <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: 'pointer' }}>
+                <input type="checkbox" checked={autoReport[item.key]}
+                  onChange={() => toggleAutoReport(item.key)}
+                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: autoReport[item.key] ? 'var(--color-brand)' : 'var(--color-background-tertiary)',
+                  borderRadius: 10, transition: 'background .2s',
+                  border: '1px solid var(--color-border-secondary)',
+                }} />
+                <div style={{
+                  position: 'absolute', top: 2,
+                  left: autoReport[item.key] ? 18 : 2,
+                  width: 14, height: 14,
+                  background: '#fff', borderRadius: '50%',
+                  transition: 'left .2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+                }} />
+              </label>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* 資料管理（跨欄）*/}
