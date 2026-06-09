@@ -1,7 +1,16 @@
 const fetch = require('node-fetch');
 const NodeCache = require('node-cache');
 
-const cache = new NodeCache({ stdTTL: 15, checkperiod: 10 });
+// ─── 分層快取策略 ──────────────────────────────────────────────────────────
+// 盤中報價（個股/大盤）：15 秒，每 10 秒清除過期項
+const cacheRealtime = new NodeCache({ stdTTL: 15,   checkperiod: 10  });
+// 每日廣度/法人/期貨：5 分鐘，每分鐘清除過期項
+const cacheDaily    = new NodeCache({ stdTTL: 300,  checkperiod: 60  });
+// 歷史K線/本益比/融資券月資料：30 分鐘
+const cacheHistory  = new NodeCache({ stdTTL: 1800, checkperiod: 120 });
+
+// 相容舊呼叫：cache 預設指向盤中快取（部分 function 直接使用 cache.set/get）
+const cache = cacheRealtime;
 
 // 台灣證交所 API endpoints
 const TWSE = {
@@ -45,7 +54,7 @@ function isTradingHours() {
  */
 async function fetchRealtimeQuotes(codes) {
   const cacheKey = `rt_${codes.sort().join('_')}`;
-  const cached = cache.get(cacheKey);
+  const cached = cacheRealtime.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -78,12 +87,12 @@ async function fetchRealtimeQuotes(codes) {
       };
     });
 
-    cache.set(cacheKey, result, isTradingHours() ? 15 : 300);
+    cacheRealtime.set(cacheKey, result, isTradingHours() ? 15 : 300);
     return result;
   } catch (err) {
     console.error('[TWSE] fetchRealtimeQuotes error:', err.message);
     // 回傳快取（如有）或空物件
-    return cache.get(cacheKey) || {};
+    return cacheRealtime.get(cacheKey) || {};
   }
 }
 
@@ -92,7 +101,7 @@ async function fetchRealtimeQuotes(codes) {
  */
 async function fetchTaiex() {
   const cacheKey = 'taiex';
-  const cached = cache.get(cacheKey);
+  const cached = cacheRealtime.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -125,11 +134,11 @@ async function fetchTaiex() {
       updatedAt: new Date().toISOString(),
     };
 
-    cache.set(cacheKey, result, isTradingHours() ? 15 : 300);
+    cacheRealtime.set(cacheKey, result, isTradingHours() ? 15 : 300);
     return result;
   } catch (err) {
     console.error('[TWSE] fetchTaiex error:', err.message);
-    return cache.get(cacheKey) || null;
+    return cacheRealtime.get(cacheKey) || null;
   }
 }
 
@@ -138,7 +147,7 @@ async function fetchTaiex() {
  */
 async function fetchDailyAll() {
   const cacheKey = 'daily_all';
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -163,11 +172,11 @@ async function fetchDailyAll() {
       };
     });
 
-    cache.set(cacheKey, result, 300); // 快取 5 分鐘
+    cacheDaily.set(cacheKey, result, 300); // 快取 5 分鐘
     return result;
   } catch (err) {
     console.error('[TWSE] fetchDailyAll error:', err.message);
-    return cache.get(cacheKey) || {};
+    return cacheDaily.get(cacheKey) || {};
   }
 }
 
@@ -176,7 +185,7 @@ async function fetchDailyAll() {
  */
 async function fetchHotStocks(limit = 30) {
   const cacheKey = `hot_${limit}`;
-  const cached = cache.get(cacheKey);
+  const cached = cacheRealtime.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -195,7 +204,7 @@ async function fetchHotStocks(limit = 30) {
       .sort((a, b) => b.volume - a.volume)
       .slice(0, limit);
 
-    cache.set(cacheKey, sorted, isTradingHours() ? 20 : 300);
+    cacheRealtime.set(cacheKey, sorted, isTradingHours() ? 20 : 300);
     return sorted;
   } catch (err) {
     console.error('[TWSE] fetchHotStocks error:', err.message);
@@ -255,7 +264,7 @@ async function fetchQuote(code) {
  */
 async function fetchMarketBreadth() {
   const cacheKey = 'breadth';
-  const cached = cache.get(cacheKey);
+  const cached = cacheRealtime.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -292,7 +301,7 @@ async function fetchMarketBreadth() {
         }
         if (up || down || flat) {
           const result = { up, down, flat, limitUp, limitDown, total: up + down + flat, source: 'realtime' };
-          cache.set(cacheKey, result, 30); // 盤中 30 秒快取
+          cacheRealtime.set(cacheKey, result, 30); // 盤中 30 秒快取
           return result;
         }
       }
@@ -310,11 +319,11 @@ async function fetchMarketBreadth() {
       else flat++;
     });
     const result = { up, down, flat, limitUp, limitDown, total: up + down + flat, source: 'daily' };
-    cache.set(cacheKey, result, isTradingHours() ? 30 : 120);
+    cacheRealtime.set(cacheKey, result, isTradingHours() ? 30 : 120);
     return result;
   } catch (err) {
     console.error('[TWSE] fetchMarketBreadth error:', err.message);
-    return cache.get(cacheKey) || { up: 0, down: 0, flat: 0, limitUp: 0, limitDown: 0, total: 0, source: 'error' };
+    return cacheRealtime.get(cacheKey) || { up: 0, down: 0, flat: 0, limitUp: 0, limitDown: 0, total: 0, source: 'error' };
   }
 }
 
@@ -323,7 +332,7 @@ async function fetchMarketBreadth() {
  */
 async function fetchValuation() {
   const cacheKey = 'valuation';
-  const cached = cache.get(cacheKey);
+  const cached = cacheHistory.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -335,7 +344,7 @@ async function fetchValuation() {
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
     const data = await res.json();
 
-    if (data.stat !== 'OK' || !data.data) return cache.get(cacheKey) || {};
+    if (data.stat !== 'OK' || !data.data) return cacheHistory.get(cacheKey) || {};
 
     // 欄位：0=代號 1=名稱 2=收盤 3=殖利率% 4=股利年度 5=本益比 6=股價淨值比 7=財報年/季
     const result = {};
@@ -354,11 +363,11 @@ async function fetchValuation() {
       };
     });
 
-    cache.set(cacheKey, result, 1800); // 快取 30 分鐘
+    cacheHistory.set(cacheKey, result, 1800); // 快取 30 分鐘
     return result;
   } catch (err) {
     console.error('[TWSE] fetchValuation error:', err.message);
-    return cache.get(cacheKey) || {};
+    return cacheHistory.get(cacheKey) || {};
   }
 }
 
@@ -368,7 +377,7 @@ async function fetchValuation() {
  */
 async function fetchIntradayTick() {
   const cacheKey = 'intraday_tick';
-  const cached = cache.get(cacheKey);
+  const cached = cacheHistory.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -376,7 +385,7 @@ async function fetchIntradayTick() {
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
     const data = await res.json();
 
-    if (data.stat !== 'OK' || !data.data) return cache.get(cacheKey) || { date: '', ticks: [], sectors: [] };
+    if (data.stat !== 'OK' || !data.data) return cacheHistory.get(cacheKey) || { date: '', ticks: [], sectors: [] };
 
     const now = new Date();
     const tw = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
@@ -407,11 +416,11 @@ async function fetchIntradayTick() {
     })).filter(s => s.value > 0);
 
     const result = { date: data.date, ticks, sectors };
-    cache.set(cacheKey, result, isTradingHours() ? 60 : 3600);
+    cacheHistory.set(cacheKey, result, isTradingHours() ? 60 : 3600);
     return result;
   } catch (err) {
     console.error('[TWSE] fetchIntradayTick error:', err.message);
-    return cache.get(cacheKey) || { date: '', ticks: [], sectors: [] };
+    return cacheHistory.get(cacheKey) || { date: '', ticks: [], sectors: [] };
   }
 }
 
@@ -420,7 +429,7 @@ async function fetchIntradayTick() {
  */
 async function fetchInstitutionalAll() {
   const cacheKey = 'inst_all';
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -434,7 +443,7 @@ async function fetchInstitutionalAll() {
 
     if (data.stat !== 'OK' || !data.data) {
       // 嘗試前一個交易日
-      return cache.get(cacheKey) || { date: dateStr, stocks: [] };
+      return cacheDaily.get(cacheKey) || { date: dateStr, stocks: [] };
     }
 
     // 欄位：0=代號 1=名稱 2=外資買 3=外資賣 4=外資超 5=外資自營買 6=自營賣 7=自營超
@@ -454,11 +463,11 @@ async function fetchInstitutionalAll() {
     })).filter(s => s.code && /^\d{4}$/.test(s.code));
 
     const result = { date: dateStr, stocks };
-    cache.set(cacheKey, result, isTradingHours() ? 300 : 3600);
+    cacheDaily.set(cacheKey, result, isTradingHours() ? 300 : 3600);
     return result;
   } catch (err) {
     console.error('[TWSE] fetchInstitutionalAll error:', err.message);
-    return cache.get(cacheKey) || { date: '', stocks: [] };
+    return cacheDaily.get(cacheKey) || { date: '', stocks: [] };
   }
 }
 
@@ -469,7 +478,7 @@ async function fetchInstitutionalAll() {
  */
 async function fetchInstitutionalStock(code, months = 3) {
   const cacheKey = `inst_${code}_${months}`;
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -508,7 +517,7 @@ async function fetchInstitutionalStock(code, months = 3) {
     }
 
     results.sort((a, b) => a.time - b.time);
-    cache.set(cacheKey, results, 3600);
+    cacheDaily.set(cacheKey, results, 3600);
     return results;
   } catch (err) {
     console.error('[TWSE] fetchInstitutionalStock error:', err.message);
@@ -523,7 +532,7 @@ async function fetchInstitutionalStock(code, months = 3) {
  */
 async function fetchMarginStock(code, months = 3) {
   const cacheKey = `margin_${code}_${months}`;
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -565,7 +574,7 @@ async function fetchMarginStock(code, months = 3) {
     }
 
     results.sort((a, b) => a.time - b.time);
-    cache.set(cacheKey, results, 3600);
+    cacheDaily.set(cacheKey, results, 3600);
     return results;
   } catch (err) {
     console.error('[TWSE] fetchMarginStock error:', err.message);
@@ -580,7 +589,7 @@ async function fetchMarginStock(code, months = 3) {
  */
 async function fetchHistory(code, months = 3) {
   const cacheKey = `hist_${code}_${months}`;
-  const cached = cache.get(cacheKey);
+  const cached = cacheHistory.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -627,11 +636,11 @@ async function fetchHistory(code, months = 3) {
     results.sort((a, b) => a.time - b.time);
     const unique = results.filter((r, i) => i === 0 || r.time !== results[i - 1].time);
 
-    cache.set(cacheKey, unique, 3600); // 快取 1 小時
+    cacheHistory.set(cacheKey, unique, 3600); // 快取 1 小時
     return unique;
   } catch (err) {
     console.error('[TWSE] fetchHistory error:', err.message);
-    return cache.get(cacheKey) || [];
+    return cacheHistory.get(cacheKey) || [];
   }
 }
 
@@ -641,7 +650,7 @@ async function fetchHistory(code, months = 3) {
  */
 async function fetchWorldMarkets() {
   const cacheKey = 'world_markets';
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   const SYMBOLS = [
@@ -685,7 +694,7 @@ async function fetchWorldMarkets() {
     .filter(r => r.status === 'fulfilled')
     .map(r => r.value);
 
-  cache.set(cacheKey, data, isTradingHours() ? 120 : 600);
+  cacheDaily.set(cacheKey, data, isTradingHours() ? 120 : 600);
   return data;
 }
 
@@ -696,7 +705,7 @@ async function fetchWorldMarkets() {
  */
 async function fetchFuturesInstitutional() {
   const cacheKey = 'futures_inst';
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -745,11 +754,11 @@ async function fetchFuturesInstitutional() {
       change,
     };
 
-    cache.set(cacheKey, result, isTradingHours() ? 60 : 600);
+    cacheDaily.set(cacheKey, result, isTradingHours() ? 60 : 600);
     return result;
   } catch (err) {
     console.warn('[TAIFEX] fetchFuturesInstitutional error:', err.message);
-    return cache.get(cacheKey) || null;
+    return cacheDaily.get(cacheKey) || null;
   }
 }
 
@@ -760,7 +769,7 @@ async function fetchFuturesInstitutional() {
  */
 async function fetchMarketMarginTrend() {
   const cacheKey = 'market_margin_trend';
-  const cached = cache.get(cacheKey);
+  const cached = cacheDaily.get(cacheKey);
   if (cached) return cached;
 
   try {
@@ -808,11 +817,11 @@ async function fetchMarketMarginTrend() {
     rows.sort((a, b) => a.date.localeCompare(b.date));
     const result = rows.slice(-20);
 
-    cache.set(cacheKey, result, isTradingHours() ? 300 : 3600);
+    cacheDaily.set(cacheKey, result, isTradingHours() ? 300 : 3600);
     return result;
   } catch (err) {
     console.warn('[TWSE] fetchMarketMarginTrend error:', err.message);
-    return cache.get(cacheKey) || [];
+    return cacheDaily.get(cacheKey) || [];
   }
 }
 

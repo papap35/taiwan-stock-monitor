@@ -1,17 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useStockStore } from './stores/stockStore';
 import Dashboard from './components/Dashboard';
-import Market from './components/Market';
 import HotStocks from './components/HotStocks';
-import Watchlist from './components/Watchlist';
 import Alerts from './components/Alerts';
 import AIAnalysis from './components/AIAnalysis';
 import Settings from './components/Settings';
 import MarketTicker from './components/MarketTicker';
-import Chips from './components/Chips';
 import Scanner from './components/Scanner';
 import Calendar from './components/Calendar';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { OfflineBanner } from './components/OfflineBanner';
+
+// recharts 相依的元件：懶載入，切換到該 tab 時才下載 charts chunk
+const Market   = lazy(() => import('./components/Market'));
+const Watchlist = lazy(() => import('./components/Watchlist'));
+const Chips    = lazy(() => import('./components/Chips'));
+
+function TabFallback() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, color: '#6b7280' }}>
+      載入中…
+    </div>
+  );
+}
 
 const TABS = [
   { id: 'home',     label: '首頁',     icon: '🏠' },
@@ -54,6 +66,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#0a1018', display: 'flex', flexDirection: 'column' }}>
+      <OfflineBanner />
 
       {/* ── TOP BAR ─────────────────────────────── */}
       <header style={{
@@ -202,16 +215,20 @@ export default function App() {
         margin: '0 auto',
         alignSelf: 'stretch',
       }} className="fade-in" key={activeTab}>
-        {activeTab === 'home'     && <Dashboard />}
-        {activeTab === 'market'   && <Market />}
-        {activeTab === 'hot'      && <HotStocks />}
-        {activeTab === 'watch'    && <Watchlist />}
-        {activeTab === 'chips'    && <Chips />}
-        {activeTab === 'alerts'   && <Alerts />}
-        {activeTab === 'ai'       && <AIAnalysis />}
-        {activeTab === 'scanner'  && <Scanner />}
-        {activeTab === 'calendar' && <Calendar />}
-        {activeTab === 'settings' && <Settings />}
+        <ErrorBoundary>
+          <Suspense fallback={<TabFallback />}>
+            {activeTab === 'home'     && <Dashboard />}
+            {activeTab === 'market'   && <Market />}
+            {activeTab === 'hot'      && <HotStocks />}
+            {activeTab === 'watch'    && <Watchlist />}
+            {activeTab === 'chips'    && <Chips />}
+            {activeTab === 'alerts'   && <Alerts />}
+            {activeTab === 'ai'       && <AIAnalysis />}
+            {activeTab === 'scanner'  && <Scanner />}
+            {activeTab === 'calendar' && <Calendar />}
+            {activeTab === 'settings' && <Settings />}
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* ── STATUS BAR ──────────────────────────── */}
