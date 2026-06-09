@@ -1,26 +1,72 @@
-# 台股終端機 PRO
+# TaiFin — 台股資訊站
 
-專業台股看盤系統，提供即時報價、AI 個股分析、價格警報通知，採用深色終端機介面設計。
+> 數據驅動，掌握台股脈動
+
+台灣股市個人投資輔助平台，提供即時看盤、深度技術分析、籌碼追蹤、交易日誌與 AI 簡報，採用深色儀表板介面設計。
+
+📖 **[查看完整使用手冊](./USER_MANUAL.md)**
+
+---
 
 ## 功能特色
 
-- **即時大盤** — TAIEX 走勢圖、市場廣度分析、類股表現、重點個股卡片
-- **熱門股票** — 可依成交量、漲跌幅排序，支援欄位點擊排序
-- **跑馬燈報價** — 頂部滾動顯示自選股與熱門股即時價格
-- **自選股管理** — 追蹤持有成本，自動計算損益百分比
-- **價格警報** — 停損/買入/賣出/突破/跌破五種警報類型，觸發即時推播
-- **AI 個股分析** — 串接 Claude API，支援全面分析/買入時機/賣出時機/風險/技術五種模式
-- **AI 大盤解讀** — 結合 TAIEX 與廣度資料，產生每日市場報告
+### 📊 大盤儀表板
+- TAIEX 即時指數、漲跌幅、成交量（億元）
+- 漲跌家數廣度分析（即時/昨收自動切換）
+- 國際主要市場指數（美股、日股、港股）
+
+### 📋 自選股與持股管理
+- 多群組管理（我的持股 / 觀察中 / 候選清單 / 空頭觀察 / 自訂群組）
+- 多筆 Lot 買入記錄，加權均成自動計算
+- 整張 + 零股分開記錄
+- 目標價 / 停損價設定，進度視覺化
+
+### 📈 技術分析（K 線圖）
+- 日K / 週K / 月K 切換（前端聚合，無額外 API）
+- 均線：MA5 / MA10 / MA20 / MA60 / MA120 / MA240，各自獨立開關
+- 布林通道（BB），帶寬顯示
+- 成交量均線（MA5 / MA20）+ 放量/縮量高亮
+- 副圖指標：KD / RSI / MACD
+
+### 🔍 籌碼分析
+- 三大法人（外資/投信/自營商）近期買賣超趨勢
+- 融資融券餘額走勢
+- 籌碼評分系統（0-100，6 項加權評分）
+
+### 📊 市場總覽
+- 熱門股排行（成交量 / 漲幅 / 跌幅 / 漲停）
+- 外資台指期淨部位（多/空/淨/當日變化）
+- 全市場融資融券近 20 日趨勢圖
+
+### 🛡 交易風控工具
+- 移動停損追蹤（Trailing Stop），從持股高點自動計算
+- 風險報酬計算器（R/R Ratio），進場前評估
+- 部位規模計算器（Position Sizing），依資金和風險比例建議張數
+
+### 📅 交易日誌
+- 出場記錄（出場價 / 日期 / 理由 / 學習筆記）
+- 已出場 Lot 顯示年化報酬率
+- 績效統計儀表板（勝率 / 獲利因子 / 期望值 / 連勝連敗 / 資金曲線 / 月度損益 / 個股勝率 / 策略勝率）
+
+### 🔔 價格警報
+- 個股突破 / 跌破指定價位通知
+
+### 🤖 AI 功能（需 Claude API Key）
+- 開盤前建議 / 盤中更新 / 收盤覆盤三種 AI 簡報
+- 個股技術面 + 籌碼面分析
+
+---
 
 ## 架構說明
 
 ```
 前端 (React/Vite) ──▶ Vercel          免費部署
 後端 (Node.js/Express) ──▶ Railway    免費 $5/月 額度
-資料庫 ──▶ Supabase PostgreSQL        免費 500MB（選配）
-台股資料 ──▶ TWSE Open API             完全免費
-AI 分析 ──▶ Anthropic Claude API      按 token 計費
+台股資料 ──▶ TWSE / TAIFEX Open API   完全免費
+AI 分析 ──▶ Anthropic Claude API      按 token 計費（選配）
 ```
+
+---
 
 ## 快速開始（本地開發）
 
@@ -36,29 +82,25 @@ cd taiwan-stock-monitor
 ```bash
 cd backend
 cp .env.example .env
-# 編輯 .env，填入 ANTHROPIC_API_KEY
-yarn install
-yarn dev
+# 編輯 .env，填入 ANTHROPIC_API_KEY（選配，不填 AI 功能不可用）
+npm install
+npm run dev
 ```
 
 ### 3. 前端設定
 
 ```bash
 cd frontend
-cp .env.example .env
-# 開發環境不需要修改 .env（使用 Vite proxy）
-yarn install
-yarn dev
+npm install
+npm run dev
 ```
 
 開啟 http://localhost:5173 即可看到系統。
 
-### 使用 Docker Compose（整合測試）
+### 使用 Docker Compose
 
 ```bash
-# 在根目錄建立 .env
 echo "ANTHROPIC_API_KEY=your_key_here" > .env
-
 docker-compose up --build
 ```
 
@@ -68,143 +110,80 @@ docker-compose up --build
 
 ### 步驟一：部署後端到 Railway
 
-1. 前往 https://railway.app 並登入（支援 GitHub OAuth）
-
-2. 點擊 **New Project** → **Deploy from GitHub Repo**
-
-3. 選擇你的 repository，**Root Directory** 設為 `backend`
-
-4. 在 **Variables** 分頁新增環境變數：
+1. 前往 https://railway.app 並以 GitHub 登入
+2. **New Project** → **Deploy from GitHub Repo**
+3. **Root Directory** 設為 `backend`
+4. 在 **Variables** 新增：
    ```
-   ANTHROPIC_API_KEY=sk-ant-xxxxx
+   ANTHROPIC_API_KEY=sk-ant-xxxxx   # 選配
    CORS_ORIGIN=https://your-app.vercel.app
    NODE_ENV=production
    ```
-
-5. Railway 會自動偵測 Dockerfile 並建置部署
-
-6. 部署完成後，取得後端 URL，格式為：
-   `https://taiwan-stock-backend-xxxx.up.railway.app`
+5. 部署完成後取得後端 URL：`https://taiwan-stock-backend-xxxx.up.railway.app`
 
 ### 步驟二：部署前端到 Vercel
 
-1. 前往 https://vercel.com 並登入
-
-2. 點擊 **Add New Project** → 匯入 GitHub repository
-
+1. 前往 https://vercel.com 並以 GitHub 登入
+2. **Add New Project** → 匯入 repository
 3. **Framework Preset** 選 `Vite`，**Root Directory** 設為 `frontend`
-
-4. 在 **Environment Variables** 填入：
+4. **Environment Variables** 填入：
    ```
    VITE_API_URL=https://taiwan-stock-backend-xxxx.up.railway.app
-   VITE_WS_URL=wss://taiwan-stock-backend-xxxx.up.railway.app
    ```
-
-5. 點擊 **Deploy**，幾分鐘後完成
-
-6. 取得前端 URL，格式為：`https://your-app.vercel.app`
-
-7. 回到 Railway，更新 `CORS_ORIGIN` 為 Vercel 的實際網址
-
-### 步驟三（選配）：設定 Supabase 資料庫
-
-如果需要跨裝置同步自選股和警報：
-
-1. 前往 https://supabase.com 建立免費專案
-
-2. 在 SQL Editor 執行：
-   ```sql
-   CREATE TABLE watchlist (
-     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-     user_id text NOT NULL,
-     code text NOT NULL,
-     name text,
-     cost numeric,
-     created_at timestamptz DEFAULT now()
-   );
-
-   CREATE TABLE alerts (
-     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-     user_id text NOT NULL,
-     code text NOT NULL,
-     name text,
-     type text NOT NULL,
-     target_price numeric NOT NULL,
-     note text,
-     triggered boolean DEFAULT false,
-     created_at timestamptz DEFAULT now()
-   );
-   ```
-
-3. 在 Railway 新增環境變數：
-   ```
-   SUPABASE_URL=https://xxxx.supabase.co
-   SUPABASE_SERVICE_KEY=your_service_key
-   ```
+5. 點擊 **Deploy**
 
 ---
 
-## API 文件
-
-### REST API
+## API 端點
 
 | Method | Path | 說明 |
 |--------|------|------|
-| GET | /api/market/taiex | 加權指數即時資料 |
-| GET | /api/market/hot | 熱門個股（?filter=vol/top/bottom/limit） |
+| GET | /api/market/taiex | 加權指數 |
+| GET | /api/market/hot | 熱門股（?filter=vol/top/bottom/limit） |
 | GET | /api/market/breadth | 漲跌家數 |
-| GET | /api/stocks/:codes | 指定股票報價（逗號分隔） |
-| GET | /api/alerts | 取得所有警報 |
+| GET | /api/market/institutional | 三大法人全市場 |
+| GET | /api/market/futures | 外資台指期淨部位 |
+| GET | /api/market/margin-trend | 全市場融資融券趨勢 |
+| GET | /api/market/world | 國際市場 |
+| GET | /api/stocks/:codes | 個股報價 |
+| GET | /api/stocks/:code/history | K 線歷史資料 |
+| GET | /api/stocks/:code/institutional | 個股法人資料 |
+| GET | /api/stocks/:code/margin | 個股融資融券 |
+| GET | /api/alerts | 警報列表 |
 | POST | /api/alerts | 新增警報 |
 | DELETE | /api/alerts/:id | 刪除警報 |
-| POST | /api/ai/analyze | AI 個股分析（SSE streaming） |
-| POST | /api/ai/market | AI 大盤解讀（SSE streaming） |
-| GET | /health | 健康檢查 |
-
-### WebSocket 訊息格式
-
-連線：`ws://your-backend/ws`
-
-**Server → Client：**
-```json
-{ "type": "taiex",    "payload": { "value": 22450, "changePercent": 0.52 } }
-{ "type": "quotes",   "payload": { "2330": { "price": 985, "changePercent": 1.2 } } }
-{ "type": "alerts_triggered", "payload": [{ "alert": {...}, "quote": {...} }] }
-```
-
-**Client → Server：**
-```json
-{ "type": "subscribe", "codes": ["2330", "2317"] }
-{ "type": "ping" }
-```
+| POST | /api/ai/analyze | AI 個股分析（SSE） |
+| POST | /api/ai/portfolio | AI 持倉簡報（SSE） |
+| POST | /api/ai/market | AI 大盤解讀（SSE） |
 
 ---
 
-## 資料來源說明
+## 資料來源
 
-- **台灣證交所（TWSE）Open API**：`openapi.twse.com.tw`，免費無限制
-- **盤中即時報價**：`mis.twse.com.tw`，僅交易時段（週一至週五 09:00–13:30）可用
-- **盤後資料**：退回使用每日收盤資料
+| 來源 | 用途 | 費用 |
+|------|------|------|
+| [TWSE Open API](https://openapi.twse.com.tw) | K線、法人、融資券 | 免費 |
+| [TWSE 即時報價](https://mis.twse.com.tw) | 盤中個股報價 | 免費 |
+| [TAIFEX OpenData](https://opendata.taifex.com.tw) | 外資期貨部位 | 免費 |
+| [Anthropic Claude API](https://anthropic.com) | AI 簡報分析 | 按量計費 |
 
 ---
 
 ## 費用估算
 
-| 服務 | 免費額度 | 超出費用 |
-|------|---------|---------|
-| Vercel | 無限靜態部署 | - |
-| Railway | $5/月 免費額度 | ~$0.000463/vCPU·秒 |
-| Supabase | 500MB DB, 50K MAU | $25/月起 |
-| TWSE API | 完全免費 | - |
-| Anthropic API | 無免費額度 | ~$0.003/1K tokens |
+| 服務 | 免費額度 | 備註 |
+|------|---------|------|
+| Vercel | 無限靜態部署 | 前端 |
+| Railway | $5/月 免費額度 | 後端，約可跑 500 小時 |
+| TWSE / TAIFEX API | 完全免費 | 公開資料 |
+| Anthropic API | 無免費額度 | ~$0.003/1K tokens，選配 |
 
-預估月費：**$0–$5 美元**（不含 Claude API token 費用）
+預估月費：**$0–$5 美元**（不含 Claude API）
 
 ---
 
-## 開發注意事項
+## 開發文件
 
-- TWSE API 在盤中（09:00–13:30）提供即時資料，盤後自動切換至收盤資料
-- 建議在 Railway 設定 `RAILWAY_HEALTHCHECK_TIMEOUT_SEC=10` 避免冷啟動逾時
-- Vercel 免費方案的 Serverless Function 有 10 秒逾時限制，WebSocket 必須走後端
-- Claude API 的 streaming 端點需要後端代理，不可直接從前端呼叫（保護 API Key）
+- [功能規格書 SPEC.md](./SPEC.md)
+- [AI Agent 開發規範 AGENTS.md](./AGENTS.md)
+- [使用手冊 USER_MANUAL.md](./USER_MANUAL.md)
