@@ -64,17 +64,17 @@ export default function App() {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
-          <div style={{
-            width: 6, height: 24, borderRadius: 3,
-            background: 'linear-gradient(180deg,#ff4d4f,#3b82f6)',
-          }} />
-          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.01em', color: '#e2e8f0' }}>
-            台股終端機
-          </span>
-          <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: '.1em',
-            color: 'var(--color-text-tertiary)', marginLeft: 2,
-          }}>PRO</span>
+          <img src="/logo.svg" alt="TaiFin" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }} />
+          <div style={{ lineHeight: 1 }}>
+            <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em',
+              background: 'linear-gradient(135deg,#2563eb,#0ea5e9)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              TaiFin
+            </span>
+            <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 6, letterSpacing: '.02em' }}>
+              台股資訊站
+            </span>
+          </div>
         </div>
 
         {/* 大盤數值 */}
