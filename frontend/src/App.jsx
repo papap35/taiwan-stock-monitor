@@ -64,15 +64,15 @@ export default function App() {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
-          <img src="/logo.svg" alt="股鏡" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }} />
+          <img src="/logo.svg" alt="TaiFin" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }} />
           <div style={{ lineHeight: 1 }}>
-            <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: '-.01em',
-              background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)',
+            <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-.02em',
+              background: 'linear-gradient(135deg,#2563eb,#0ea5e9)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              股鏡
+              TaiFin
             </span>
-            <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 5 }}>
-              StockLens
+            <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 6, letterSpacing: '.02em' }}>
+              台股資訊站
             </span>
           </div>
         </div>
