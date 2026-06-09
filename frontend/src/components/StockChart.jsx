@@ -156,14 +156,23 @@ export default function StockChart({ stock, onClose }) {
     const cs = chart.addSeries(CandlestickSeries, { upColor: '#ff4d4f', downColor: '#00c48c', borderUpColor: '#ff4d4f', borderDownColor: '#00c48c', wickUpColor: '#ff4d4f', wickDownColor: '#00c48c' });
     cs.setData(displayCandles);
 
-    // 成交量
-    const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
-    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    vol.setData(displayCandles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(255,77,79,.4)' : 'rgba(0,196,140,.4)' })));
-
-    // 成交量均線（MA5 / MA20）
+    // 成交量均線（先算，供量柱放量判斷）
     const volMa5  = calcVolumeMA(displayCandles, 5);
     const volMa20 = calcVolumeMA(displayCandles, 20);
+    // 建立 time → ma5 查詢 map
+    const ma5Map = Object.fromEntries(volMa5.map(x => [x.time, x.value]));
+
+    // 成交量（放量 > MA5×1.5 → 鮮豔；縮量 → 半透明）
+    const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    vol.setData(displayCandles.map(c => {
+      const ma5v = ma5Map[c.time];
+      const isUp = c.close >= c.open;
+      const isHigh = ma5v != null && c.volume > ma5v * 1.5;  // 放量
+      const isLow  = ma5v != null && c.volume < ma5v * 0.5;  // 縮量
+      const alpha = isHigh ? '.85' : isLow ? '.2' : '.4';
+      return { time: c.time, value: c.volume, color: isUp ? `rgba(255,77,79,${alpha})` : `rgba(0,196,140,${alpha})` };
+    }));
     if (volMa5.length) {
       const vma5 = chart.addSeries(LineSeries, { color: 'rgba(245,158,11,.6)', lineWidth: 1, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       vma5.setData(volMa5.map(x => ({ time: x.time, value: x.value })));
