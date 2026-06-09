@@ -62,6 +62,9 @@ app.use((err, _req, res, _next) => {
 // ── WebSocket ──────────────────────────────────────────────────────────────
 initWebSocket(server);
 
+// ── Scheduler ─────────────────────────────────────────────────────────────
+require('./services/scheduler').initScheduler();
+
 // ── Start ──────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT) || 3001;
 server.listen(PORT, '0.0.0.0', () => {

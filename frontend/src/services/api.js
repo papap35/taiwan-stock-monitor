@@ -52,6 +52,11 @@ export const api = {
   clearLineToken: () => apiFetch('/api/settings/line-token', { method: 'DELETE' }),
   testLineNotify: () => apiFetch('/api/settings/line-token/test', { method: 'POST' }),
 
+  // 自動簡報排程
+  getAutoReportSettings: () => apiFetch('/api/settings/auto-report'),
+  setAutoReportSettings: (settings) => apiFetch('/api/settings/auto-report', { method: 'POST', body: JSON.stringify(settings) }),
+  triggerAutoReport: (type = 'pre') => apiFetch('/api/settings/auto-report/trigger', { method: 'POST', body: JSON.stringify({ type }) }),
+
   // AI 分析（SSE streaming）
   analyzePortfolio: (holdings, type, onChunk, onDone) => {
     return fetchSSE('/api/ai/portfolio', { holdings, type }, onChunk, onDone);
