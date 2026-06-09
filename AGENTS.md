@@ -275,6 +275,41 @@ Push 新 commit 到**已開啟的 PR** 之後，必須立即執行：
 gh pr edit <PR號碼> --title "新標題" --body "新描述"
 ```
 
+**PR description 格式**（`gh pr create` 與 `gh pr edit` 均使用此模板）：
+
+```
+## Summary
+
+- **功能名稱**：一句話說明做了什麼
+- 其他重點變更（測試、規範、文件）
+
+## 功能說明（有新功能時）
+
+| 功能 | 說明 |
+|------|------|
+| 功能項目 | 詳細說明 |
+
+## 測試明細（有新增測試時）
+
+| 新增測試檔案 | 測試數 | 涵蓋內容 |
+|------------|-------|---------|
+| `path/to/test.js` | N | 涵蓋函式/場景 |
+
+## Files Changed
+
+| 檔案 | 異動 |
+|------|------|
+| `path/to/file` | 說明這個檔案改了什麼 |
+
+## Test
+
+Frontend N tests passed ✅  Backend N tests passed ✅
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+> 視實際內容決定要不要包含「功能說明」和「測試明細」區塊，沒有新功能/測試時可省略。
+
 PR description 必須反映 **目前 branch 上所有 commit 的累積狀態**，不是只描述最新一個 commit。具體來說：
 
 - 新增了修正（fix commit）→ 在 Summary 裡補一條，或新增 `## Fixes` 區塊
