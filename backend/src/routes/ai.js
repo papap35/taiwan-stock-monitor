@@ -332,4 +332,91 @@ ${typeInstruction}
   }
 });
 
+// POST /api/ai/pattern — K 線型態辨識
+router.post('/pattern', async (req, res) => {
+  const { code, name, candles = [], indicators = {} } = req.body;
+  if (!code) return res.status(400).json({ error: '缺少 code' });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    res.status(503).json({ error: '尚未設定 ANTHROPIC_API_KEY，AI 功能不可用' });
+    return;
+  }
+
+  // 取最近 60 根（或全部）
+  const recent = candles.slice(-60);
+  const periodLabel = recent.length >= 20 ? `近 ${recent.length} 根 K 棒` : `僅 ${recent.length} 根 K 棒（資料較少）`;
+
+  // 組成 OHLCV 文字摘要（不傳整個陣列，節省 token）
+  const last = recent[recent.length - 1];
+  const prev5 = recent.slice(-5).map(c =>
+    `${c.time} O:${c.open} H:${c.high} L:${c.low} C:${c.close} V:${Math.round(c.volume/1000)}K`
+  ).join('\n');
+
+  // 計算簡單趨勢資訊
+  const closes = recent.map(c => c.close);
+  const high60 = Math.max(...recent.map(c => c.high));
+  const low60  = Math.min(...recent.map(c => c.low));
+  const pricePos = last ? (((last.close - low60) / (high60 - low60)) * 100).toFixed(1) : '—';
+
+  const indStr = Object.entries(indicators)
+    .filter(([, v]) => v != null)
+    .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(2) : v}`)
+    .join('、') || '無';
+
+  const prompt = `請分析 ${name}（${code}）的 K 線圖形態（${periodLabel}）。
+
+【最近 5 根 K 棒 OHLCV】
+${prev5}
+
+【技術指標當前值】
+${indStr}
+
+【整體區間】
+${periodLabel}最高：${high60}，最低：${low60}
+目前收盤 ${last?.close} 位於 ${periodLabel}區間的 ${pricePos}% 位置
+
+請依序分析：
+
+1. **主要型態辨識**
+   指出目前最顯著的圖形型態（頭肩頂/底、W底/M頭、旗形、三角收斂、箱型整理、杯柄型態、雙頂/雙底等）。若型態尚未完成，說明完成度（%）與確認條件。
+
+2. **趨勢與位置判斷**
+   多頭/空頭/橫盤？目前在趨勢的哪個階段（初升/主升/末升/初跌/主跌/末跌）？
+
+3. **關鍵價位**
+   - 近期壓力：___（原因）
+   - 近期支撐：___（原因）
+   - 型態目標價（若適用）：___
+
+4. **操作建議**
+   明確說明：觀望 / 可考慮布局 / 減碼注意，並附上失效條件（型態破壞的停損位）。
+
+5. **風險提示**
+   目前最大的不確定因素是什麼？
+
+請用繁體中文回覆，語氣專業簡潔，每點不超過 3 行。`;
+
+  initSSE(res);
+  try {
+    const stream = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1200,
+      system: '你是專業台股技術分析師，擅長 K 線型態辨識與波段操作。請用繁體中文回覆，語氣專業簡潔。分析僅供參考，不構成投資建議。',
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        writeChunk(res, chunk.delta.text);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    console.error('[AI] /pattern error:', err.message, err.status ?? '');
+    writeError(res, `型態分析失敗：${err.message}`);
+  }
+});
+
 module.exports = router;
