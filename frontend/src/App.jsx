@@ -11,6 +11,7 @@ import Settings from './components/Settings';
 import MarketTicker from './components/MarketTicker';
 import Chips from './components/Chips';
 import Scanner from './components/Scanner';
+import Calendar from './components/Calendar';
 
 const TABS = [
   { id: 'home',     label: '首頁',     icon: '🏠' },
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'alerts',   label: '警報設定', icon: '🔔' },
   { id: 'ai',       label: 'AI 分析',  icon: '🤖' },
   { id: 'scanner',  label: '條件選股', icon: '🔎' },
+  { id: 'calendar', label: '事件行事曆', icon: '📅' },
   { id: 'settings', label: '系統設定', icon: '⚙️' },
 ];
 
@@ -208,6 +210,7 @@ export default function App() {
         {activeTab === 'alerts'   && <Alerts />}
         {activeTab === 'ai'       && <AIAnalysis />}
         {activeTab === 'scanner'  && <Scanner />}
+        {activeTab === 'calendar' && <Calendar />}
         {activeTab === 'settings' && <Settings />}
       </main>
 
