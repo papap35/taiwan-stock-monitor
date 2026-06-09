@@ -54,6 +54,8 @@
 ### 🤖 AI 功能（需 Claude API Key）
 - 開盤前建議 / 盤中更新 / 收盤覆盤三種 AI 簡報
 - 個股技術面 + 籌碼面分析
+- **K 線型態辨識**：近 60 根 K 棒送 AI，辨識頭肩、W/M 底頂、旗形、三角收斂等型態，給出壓力支撐與操作建議
+- **AI 覆盤助手**：已出場交易送 AI 分析進出場時機、找出操作偏誤、給出系統性改進方向
 
 ---
 
@@ -155,6 +157,8 @@ docker-compose up --build
 | POST | /api/ai/analyze | AI 個股分析（SSE） |
 | POST | /api/ai/portfolio | AI 持倉簡報（SSE） |
 | POST | /api/ai/market | AI 大盤解讀（SSE） |
+| POST | /api/ai/pattern | AI K 線型態辨識（SSE） |
+| POST | /api/ai/review | AI 交易覆盤（SSE） |
 
 ---
 

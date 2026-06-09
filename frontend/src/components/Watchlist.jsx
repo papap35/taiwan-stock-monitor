@@ -230,6 +230,111 @@ function PerformanceDashboard({ watchlist }) {
 // ─────────────────────────────────────────────────────────────
 //  Lot Modal（新增 / 編輯買入記錄）
 // ─────────────────────────────────────────────────────────────
+// ─── AI 覆盤 Modal ────────────────────────────────────────────
+function AIReviewModal({ code, name, lot, text, loading, onStart, onClose }) {
+  const exitReasonLabel = {
+    target: '目標到達', stoploss: '停損出場',
+    technical: '技術面破壞', fundamental: '基本面改變', other: '其他',
+  };
+  // 使用 calcExitedLot 統一計算，避免重複邏輯
+  const exitedResult = lot.exitPrice ? calcExitedLot(lot) : null;
+  const pnl    = exitedResult?.pnlPct ?? null;
+  const pnlAmt = exitedResult?.pnlAmt ?? null;
+
+  const renderText = (t) =>
+    t.split(/(\*\*[^*]+\*\*)/).map((seg, i) =>
+      seg.startsWith('**') && seg.endsWith('**')
+        ? <strong key={i} style={{ color: '#e2e8f0', fontWeight: 700 }}>{seg.slice(2, -2)}</strong>
+        : <span key={i}>{seg}</span>
+    );
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(4px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ background: '#0f1923', border: '1px solid #1e2d40', borderRadius: 10, width: '100%', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.8)' }} className="fade-in">
+
+        {/* 標題 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>🔍 AI 覆盤 — {name}（{code}）</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ width: 26, height: 26, borderRadius: 4, border: '1px solid #1e2d40', background: 'transparent', color: '#64748b', fontSize: 16, cursor: 'pointer' }}>×</button>
+        </div>
+
+        {/* 交易摘要 */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
+          {[
+            { label: '進場', val: lot.date || '—', sub: `$${lot.cost}` },
+            { label: '出場', val: lot.exitDate || '—', sub: `$${lot.exitPrice}` },
+            { label: '損益', val: pnl != null ? `${pnl >= 0 ? '+' : ''}${pnl}%` : '—', sub: pnlAmt != null ? `${Number(pnlAmt) >= 0 ? '+' : ''}${Number(pnlAmt).toLocaleString()}元` : '', color: pnl >= 0 ? '#ff4d4f' : '#00c48c' },
+            { label: '出場理由', val: exitReasonLabel[lot.exitReason] || lot.exitReason || '—', sub: '' },
+          ].map((c, i) => (
+            <div key={i} style={{ flex: 1, padding: '8px 12px', borderRight: i < 3 ? '1px solid #1a2535' : 'none' }}>
+              <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 2 }}>{c.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: c.color || '#e2e8f0' }}>{c.val}</div>
+              {c.sub && <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'var(--font-mono)' }}>{c.sub}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* 內容區 */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', minHeight: 0 }}>
+          {!text && !loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 30 }}>
+              <div style={{ fontSize: 13, color: '#64748b', textAlign: 'center', lineHeight: 1.6 }}>
+                AI 將根據你的進出場記錄、K 線背景和學習筆記<br />
+                給出客觀的覆盤評估與改進建議。
+              </div>
+              {lot.lesson && (
+                <div style={{ background: '#161f2e', border: '1px solid #1e2d40', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#94a3b8', width: '100%' }}>
+                  💡 你的自評：{lot.lesson}
+                </div>
+              )}
+              <button onClick={onStart} style={{
+                padding: '8px 24px', borderRadius: 6, fontSize: 13, fontWeight: 700,
+                border: '1px solid #0ea5e9', background: 'rgba(14,165,233,.12)',
+                color: '#0ea5e9', cursor: 'pointer', marginTop: 8,
+              }}>
+                開始 AI 覆盤
+              </button>
+            </div>
+          )}
+
+          {!text && loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>AI 正在分析這筆交易...</div>
+              {[100, 80, 90, 70, 85].map((w, i) => (
+                <div key={i} style={{ height: 10, borderRadius: 4, background: '#1e2d40', width: `${w}%`, animation: 'pulse 1.5s ease-in-out infinite', animationDelay: `${i * 0.12}s` }} />
+              ))}
+            </div>
+          )}
+
+          {text && (
+            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.85, whiteSpace: 'pre-wrap' }}>
+              {renderText(text)}
+              {loading && <span style={{ display: 'inline-block', width: 6, height: 13, background: '#0ea5e9', marginLeft: 2, animation: 'pulse 1s ease-in-out infinite', verticalAlign: 'middle' }} />}
+            </div>
+          )}
+        </div>
+
+        {/* 底部 */}
+        <div style={{ padding: '8px 16px', borderTop: '1px solid #1a2535', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 9, color: '#334155', flex: 1 }}>分析僅供參考，不構成投資建議</span>
+          {text && !loading && (
+            <button onClick={onStart} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: '1px solid #1e2d40', background: 'transparent', color: '#475569', cursor: 'pointer' }}>
+              重新分析
+            </button>
+          )}
+          <button onClick={onClose} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: '1px solid #1e2d40', background: 'transparent', color: '#475569', cursor: 'pointer' }}>
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LotModal({ stockName, lot, settings, onSave, onClose }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
@@ -568,6 +673,10 @@ export default function Watchlist() {
   const [briefType, setBriefType] = useState('open');
   const [briefText, setBriefText] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
+  // AI 覆盤
+  const [reviewModal, setReviewModal] = useState(null); // { code, name, lot }
+  const [reviewText, setReviewText]   = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [valMap, setValMap]       = useState({});
   const [chipData, setChipData]   = useState({}); // { [code]: { inst, margin } }
   const [chipExpanded, setChipExpanded] = useState(new Set()); // 展開籌碼明細的股票
@@ -697,6 +806,43 @@ export default function Watchlist() {
     <div>
       {/* Modals */}
       {chartStock && <StockChart stock={chartStock} onClose={() => setChartStock(null)} />}
+
+      {/* ── AI 覆盤 Modal ── */}
+      {reviewModal && (
+        <AIReviewModal
+          code={reviewModal.code}
+          name={reviewModal.name}
+          lot={reviewModal.lot}
+          text={reviewText}
+          loading={reviewLoading}
+          onStart={async () => {
+            if (reviewLoading) return;
+            setReviewLoading(true);
+            setReviewText('');
+            // 嘗試取得 K 線資料（3 個月）
+            let candles = [];
+            try {
+              const res = await api.getHistory(reviewModal.code, 3);
+              candles = res.candles || [];
+            } catch { /* 無 K 線也能分析 */ }
+            try {
+              await api.reviewTrade(
+                reviewModal.code,
+                reviewModal.name,
+                reviewModal.lot,
+                candles,
+                (chunk) => setReviewText(t => t + chunk),
+                () => setReviewLoading(false),
+              );
+            } catch {
+              setReviewText('⚠️ 覆盤失敗，請確認後端 API Key 是否設定。');
+              setReviewLoading(false);
+            }
+          }}
+          onClose={() => { setReviewModal(null); setReviewText(''); setReviewLoading(false); }}
+        />
+      )}
+
       {lotModal && (
         <LotModal
           stockName={`${lotModal.name}（${lotModal.code}）`}
@@ -1124,6 +1270,9 @@ export default function Watchlist() {
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                {isExited && (
+                                  <SmBtn onClick={() => { setReviewModal({ code, name, lot }); setReviewText(''); }} color="#0ea5e9">AI 覆盤</SmBtn>
+                                )}
                                 <SmBtn onClick={() => setLotModal({ code, name, lot })} color="#f59e0b">編輯</SmBtn>
                                 <SmBtn onClick={() => removeLot(code, lot.id)} color="#f87171" danger>刪除</SmBtn>
                               </div>

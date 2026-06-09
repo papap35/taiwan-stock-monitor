@@ -52,6 +52,9 @@ export const api = {
   analyzePattern: (code, name, candles, indicators, onChunk, onDone) => {
     return fetchSSE('/api/ai/pattern', { code, name, candles, indicators }, onChunk, onDone);
   },
+  reviewTrade: (code, name, lot, candles, onChunk, onDone) => {
+    return fetchSSE('/api/ai/review', { code, name, lot, candles }, onChunk, onDone);
+  },
 };
 
 /**

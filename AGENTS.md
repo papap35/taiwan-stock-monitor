@@ -103,9 +103,16 @@ const pnlPct = (mktVal / totalCost - 1) * 100;
 
 ### 2.1 測試涵蓋範圍
 
-- `utils/` 下的每一個 exported 函式**都必須有對應測試**。
+**前端：**
+- `frontend/src/utils/` 下的每一個 exported 函式**都必須有對應測試**。
 - 新增函式 → 同一個 PR/commit 內必須附上測試，不能事後補。
 - UI 元件邏輯提取到 utils 後，測試寫在 utils 層，不寫元件整合測試（避免測試與實作緊耦合）。
+
+**後端：**
+- `backend/src/utils/` 下的每一個 exported 函式**都必須有對應測試**（與前端相同規則）。
+- Route handler 裡**禁止包含純計算邏輯**（損益計算、資料切片、條件判斷…）。有純計算就抽到 `backend/src/utils/`，再從 handler 呼叫，並補測試。
+- `services/` 裡含有純邏輯的 method（如 `AlertEngine.checkQuotes`、`_buildMessage`）也必須測試，測試放在 `backend/src/__tests__/`。
+- 後端測試執行方式：`cd backend && node --test src/__tests__/*.test.js`
 
 ### 2.2 測試結構
 
@@ -165,14 +172,17 @@ it('hasPrice 為 false 時跳過計算', () => { ... });
 ### 2.6 執行測試
 
 ```bash
-# 單次執行（CI / commit 前）
+# 前端測試（單次執行，CI / commit 前）
 cd frontend && npm test
 
-# 監看模式（開發中）
+# 前端測試（監看模式，開發中）
 cd frontend && npm run test:watch
+
+# 後端測試
+cd backend && node --test src/__tests__/*.test.js
 ```
 
-**每次 commit 前必須確認測試全數通過**（0 failed）。
+**每次 commit 前，前端和後端測試都必須全數通過**（0 failed）。
 
 ---
 
@@ -191,9 +201,11 @@ cd frontend && npm run test:watch
 
 3. 在 branch 上開發，分批 commit（每個 commit 一件事）
 
-4. 開發完畢，執行自我 review（見 3.5）
+4. 開發完畢，執行自我 review（見 3.5），**包含文件同步（Step 2.5），必須在同一 branch 補 commit**
 
 5. 建立 PR（gh pr create），並等待 review 後 merge
+
+6. 若 PR 開啟後有追加 commit，執行 Step 2.6 更新 PR title / description
 ```
 
 **Branch 命名規則：**
@@ -235,7 +247,11 @@ git diff main...HEAD                 # 逐行確認沒有意外改動
 
 #### Step 2.5：文件同步檢查（每次 PR 必做）
 
-功能開發完畢後，**必須逐一確認以下 4 個 .md 檔案**是否反映此次異動：
+> ⛔ **這是硬性門檻，不是選填 checklist。**
+> `.md` 更新必須 commit 在**同一個 branch** 裡，與功能程式碼一起進 PR。
+> 不可以「先開 PR，事後再補文件」——那代表 PR 本身是不完整的。
+
+功能開發完畢後，在執行 `gh pr create` 之前，**必須逐一確認以下 4 個 .md 檔案**是否反映此次異動，並在同一個 branch 上 commit 更新：
 
 | 檔案 | 每次功能 PR 應確認的事項 |
 |------|------------------------|
@@ -250,6 +266,23 @@ git diff main...HEAD                 # 逐行確認沒有意外改動
 - 新增 API endpoint 或改變呼叫方式 → **README.md 必更新**
 - 功能完成 → **SPEC.md 必標 `[x]`**
 - 只是內部重構或 bug fix（使用者感知不到）→ .md 可不更新，但 commit message 要說明
+
+#### Step 2.6：已開 PR 追加 commit 時，同步更新 PR title / description
+
+Push 新 commit 到**已開啟的 PR** 之後，必須立即執行：
+
+```bash
+gh pr edit <PR號碼> --title "新標題" --body "新描述"
+```
+
+PR description 必須反映 **目前 branch 上所有 commit 的累積狀態**，不是只描述最新一個 commit。具體來說：
+
+- 新增了修正（fix commit）→ 在 Summary 裡補一條，或新增 `## Fixes` 區塊
+- 新增了文件更新（docs commit）→ 在 Files Changed 表格裡補上 .md 欄位
+- 功能範圍有變化 → title 視情況更新
+
+**判斷是否需要更新：**
+執行 `git log main..HEAD --oneline` 後，如果 PR description 無法完整反映這些 commit 的改動，就必須更新。
 
 #### Step 3：針對這次 PR 的 bug 風險評估
 
@@ -327,14 +360,16 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 ### 4.3 commit 前檢查清單
 
 ```
-□ npm test 通過（0 failed）
+□ 前端：npm test 通過（0 failed）
+□ 後端：node --test src/__tests__/*.test.js 通過（0 failed）
 □ npm run build 無 error（warning 可接受）
-□ 新功能有對應測試
+□ 新功能有對應測試（前端 utils/ 函式 + 後端 utils/ 與 services/ 純邏輯）
+□ Route handler 內無 inline 純計算邏輯（已抽至 utils/）
 □ 新的 bug fix 有防迴歸測試
 □ 沒有 console.log 除錯碼遺留（console.warn 可接受）
 □ 沒有 hardcode 的 API key 或機密資訊
 □ SPEC.md 中對應功能的狀態已更新（若適用）
-□ 文件同步：README / USER_MANUAL / AGENTS 是否需要更新（見 3.5 Step 2.5）
+□ 文件同步：README / USER_MANUAL / AGENTS 已在本 branch 更新（見 3.5 Step 2.5）——不可事後補，必須在同一 PR 內
 ```
 
 ### 4.4 不應該 commit 的東西
