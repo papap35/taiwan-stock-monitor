@@ -515,9 +515,9 @@ export default function StockChart({ stock, onClose }) {
 
           {/* K 線 Tab */}
           {mainTab === 'K線' && (
-            <div style={{ display: 'flex', height: '100%' }}>
-              {/* 圖表區 */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+            <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              {/* 圖表區 — 右側留出面板寬度 */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, marginRight: showAIPanel ? 300 : 0, transition: 'margin-right .25s ease' }}>
                 <div ref={mainRef} style={{ flex: 1 }} />
                 {indicator !== 'OFF' && (
                   <>
@@ -533,16 +533,15 @@ export default function StockChart({ stock, onClose }) {
                 )}
               </div>
 
-              {/* AI 型態分析面板 */}
+              {/* AI 型態分析面板 — absolute 不影響父層高度 */}
               {showAIPanel && (
                 <div style={{
-                  width: 300, flexShrink: 0,
+                  position: 'absolute', top: 0, right: 0, bottom: 0,
+                  width: 300,
                   borderLeft: '1px solid #1a2535',
                   background: '#0a1018',
                   display: 'flex', flexDirection: 'column',
                   overflow: 'hidden',
-                  minHeight: 0,
-                  height: '100%',
                 }}>
                   {/* 面板標題 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
