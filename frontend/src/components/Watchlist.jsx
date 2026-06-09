@@ -680,11 +680,29 @@ export default function Watchlist() {
   const [valMap, setValMap]       = useState({});
   const [chipData, setChipData]   = useState({}); // { [code]: { inst, margin } }
   const [chipExpanded, setChipExpanded] = useState(new Set()); // 展開籌碼明細的股票
+  const [calEvents, setCalEvents] = useState({}); // { [code]: [event, ...] }
   const briefRef = useRef(null);
 
   useEffect(() => {
     api.getMarketValuation().then(d => setValMap(d || {})).catch(() => {});
   }, []);
+
+  // ── 行事曆事件：抓自選股未來 14 天的除權息/財報
+  useEffect(() => {
+    if (!watchlist.length) return;
+    const codes = watchlist.map(w => w.code);
+    api.getCalendarEvents(14, codes)
+      .then(res => {
+        // 以 code 為 key 分組
+        const map = {};
+        for (const e of (res.events || [])) {
+          (map[e.code] = map[e.code] || []).push(e);
+        }
+        setCalEvents(map);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist.map(w => w.code).join(',')]);
 
   // ── 籌碼資料：每支自選股抓法人 + 融資券（mount 時一次，不需頻繁刷新）
   useEffect(() => {
@@ -1063,6 +1081,23 @@ export default function Watchlist() {
                         const g = groups.find(g => g.id === (row.group || 'holdings'));
                         return g ? <span style={{ fontSize: 8, padding: '0 4px', borderRadius: 2, background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>{g.name}</span> : null;
                       })()}
+                      {/* 行事曆事件提醒 */}
+                      {(calEvents[code] || []).slice(0, 2).map((ev, i) => {
+                        const TYPE_ICON = { dividend: '💰', rights: '📈', earnings: '📋' };
+                        const icon = TYPE_ICON[ev.type] || '📅';
+                        const dayLabel = ev.daysFromToday === 0 ? '今天' : ev.daysFromToday === 1 ? '明天' : `${ev.daysFromToday}天後`;
+                        const urgent = ev.daysFromToday <= 3;
+                        return (
+                          <span key={i} style={{ fontSize: 8, padding: '0 4px', borderRadius: 2,
+                            background: urgent ? 'rgba(245,158,11,.15)' : 'rgba(100,116,139,.1)',
+                            color: urgent ? '#f59e0b' : '#64748b',
+                            border: `1px solid ${urgent ? 'rgba(245,158,11,.3)' : 'rgba(100,116,139,.2)'}`,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {icon} {dayLabel}{ev.amount ? ` $${ev.amount}` : ''}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
 

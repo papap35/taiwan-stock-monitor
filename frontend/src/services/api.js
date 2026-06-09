@@ -39,6 +39,13 @@ export const api = {
   deleteAlert: (id) => apiFetch(`/api/alerts/${id}`, { method: 'DELETE' }),
   clearTriggered: () => apiFetch('/api/alerts/triggered/clear', { method: 'DELETE' }),
 
+  // 行事曆
+  getCalendarEvents: (days = 60, codes = null) => {
+    const params = new URLSearchParams({ days });
+    if (codes && codes.length) params.set('codes', codes.join(','));
+    return apiFetch(`/api/calendar/events?${params}`);
+  },
+
   // LINE Notify 設定
   getLineTokenStatus: () => apiFetch('/api/settings/line-token'),
   setLineToken: (token) => apiFetch('/api/settings/line-token', { method: 'POST', body: JSON.stringify({ token }) }),
