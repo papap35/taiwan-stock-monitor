@@ -346,33 +346,31 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ## 技術債與基礎強化
 
-#### T1. 測試覆蓋率提升
+#### T1. 測試覆蓋率提升 ✅
 
-- **現況**：87 個單元測試（僅覆蓋 `utils/portfolio.js`）
-- **目標**：
-  - `services/twse.js`：Mock fetch，測試各 API 資料解析邏輯
-  - `stores/stockStore.js`：測試 addLot / updateLot / removeLot / importData
-  - `websocket.js`：測試 collectSubscribedCodes、broadcast 邏輯
-  - E2E（Playwright）：新增股票 → 看到報價 → 觸發警報完整流程
+- **完成**：113 後端 / 182 前端，共 295 個單元測試
+  - 新增 `twse.test.js`（17 tests）：mock node-fetch 測試 API 資料解析
+  - 新增 `websocket.test.js`（10 tests）：collectSubscribedCodes / broadcast 邏輯
+- **剩餘**：E2E（Playwright）尚未實作
 
-#### T2. 後端快取策略清晰化
+#### T2. 後端快取策略清晰化 ✅
 
-- **現況**：所有 API 共用一個 NodeCache，TTL 混亂，盤中資料可能用到舊快取
-- **建議分層**：
-  - 盤中報價：15 秒 TTL
-  - 每日廣度/法人：5 分鐘 TTL
-  - 歷史K線/本益比：30 分鐘 TTL
+- **完成**：`twse.js` 拆為三層 NodeCache
+  - `cacheRealtime`：盤中報價，15 秒 TTL
+  - `cacheDaily`：法人/期貨/融資券，5 分鐘 TTL
+  - `cacheHistory`：歷史K線/本益比，30 分鐘 TTL
 
-#### T3. 離線體驗與錯誤邊界
+#### T3. 離線體驗與錯誤邊界 ✅
 
-- React Error Boundary：API 失敗時顯示友善訊息而非白屏
-- 網路斷線偵測：`navigator.onLine` + 自動重連提示
-- 後端不可用時，前端顯示「使用快取資料（更新於 HH:MM）」
+- **完成**：
+  - `ErrorBoundary.jsx`：捕捉 render 錯誤，顯示友善訊息 + 重試按鈕
+  - `useOnlineStatus.js`：監聽 window online/offline 事件
+  - `OfflineBanner.jsx`：斷線時頂部紅色 banner，恢復後綠色提示 3 秒
 
-#### T4. Bundle 大小優化
+#### T4. Bundle 大小優化 ✅
 
-- recharts（gzip 148KB）是最大的包，可用 dynamic import 懶載入
-- 目標：首次載入主包 < 100KB gzip
+- **完成**：Market / Watchlist / Chips 改為 React.lazy 懶載入
+- **結果**：主包 gzip 39.97KB（目標 < 100KB ✅），recharts chunk 獨立 152KB
 
 ---
 
