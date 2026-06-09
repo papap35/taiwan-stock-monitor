@@ -517,7 +517,7 @@ export default function StockChart({ stock, onClose }) {
           {mainTab === 'K線' && (
             <div style={{ display: 'flex', height: '100%' }}>
               {/* 圖表區 */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
                 <div ref={mainRef} style={{ flex: 1 }} />
                 {indicator !== 'OFF' && (
                   <>
@@ -541,6 +541,8 @@ export default function StockChart({ stock, onClose }) {
                   background: '#0a1018',
                   display: 'flex', flexDirection: 'column',
                   overflow: 'hidden',
+                  minHeight: 0,
+                  height: '100%',
                 }}>
                   {/* 面板標題 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: '1px solid #1a2535', flexShrink: 0 }}>
