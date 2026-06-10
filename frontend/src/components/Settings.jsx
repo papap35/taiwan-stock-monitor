@@ -74,7 +74,10 @@ export default function Settings() {
   };
 
   // ── 雲端同步 ──────────────────────────────────────────────────
-  const { enabled: syncEnabled, syncing, lastSyncAt, error: syncError, push: syncPush, pull: syncPull } = useCloudSync();
+  const {
+    enabled: syncEnabled, syncing, lastSyncAt, error: syncError, push: syncPush, pull: syncPull,
+    authEnabled, user, signInWithGoogle, signOut,
+  } = useCloudSync();
 
   const handleTriggerReport = async (type) => {
     try {
@@ -307,6 +310,40 @@ export default function Settings() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Google 登入狀態 */}
+            {authEnabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 10, borderBottom: '1px solid var(--color-border-tertiary)' }}>
+                {user ? (
+                  <>
+                    {user.user_metadata?.avatar_url && (
+                      <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                    )}
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', flex: 1 }}>
+                      已登入：{user.email}
+                    </div>
+                    <button
+                      onClick={signOut}
+                      style={{ fontSize: 12, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                        border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)' }}>
+                      登出
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', flex: 1 }}>
+                      登入後可在多裝置間同步個人資料（未登入則使用共用單一帳號）
+                    </div>
+                    <button
+                      onClick={signInWithGoogle}
+                      style={{ fontSize: 12, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                        border: '1px solid var(--color-brand)', background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)', fontWeight: 600 }}>
+                      使用 Google 登入
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* 上次同步時間 */}
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
               上次同步：{lastSyncAt

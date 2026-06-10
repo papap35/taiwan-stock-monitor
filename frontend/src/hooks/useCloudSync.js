@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../services/api';
+import { api, setAuthTokenGetter } from '../services/api';
 import { useStockStore } from '../stores/stockStore';
+import { useAuth } from './useAuth';
 
 const LAST_SYNC_KEY = 'cloud_sync_last_at';
 
@@ -10,12 +11,20 @@ const LAST_SYNC_KEY = 'cloud_sync_last_at';
  * - 啟動時自動 pull（若 Supabase 已啟用）
  * - 每次 push 成功後記錄時間到 localStorage
  * - 提供手動 push / pull 方法
+ * - P6-21：登入後自動帶上 access token，同步該使用者的雲端資料
  */
 export function useCloudSync() {
   const [enabled,    setEnabled]    = useState(false);
   const [syncing,    setSyncing]    = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState(() => localStorage.getItem(LAST_SYNC_KEY) || null);
   const [error,      setError]      = useState(null);
+
+  const auth = useAuth();
+
+  // 將取得 access token 的方法註冊給 api，供 /api/sync/* 帶 Authorization header
+  useEffect(() => {
+    setAuthTokenGetter(auth.getAccessToken);
+  }, [auth.getAccessToken]);
 
   const { watchlist, groups, alerts, settings, importData } = useStockStore(s => ({
     watchlist:  s.watchlist,
@@ -73,5 +82,18 @@ export function useCloudSync() {
     }
   }, [enabled, watchlist, groups, alerts, settings, importData]);
 
-  return { enabled, syncing, lastSyncAt, error, push, pull };
+  // 登入狀態切換時，自動從雲端拉取該使用者的資料
+  useEffect(() => {
+    if (!enabled || auth.loading) return;
+    pull();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, auth.loading, auth.user?.id]);
+
+  return {
+    enabled, syncing, lastSyncAt, error, push, pull,
+    authEnabled: auth.enabled,
+    user: auth.user,
+    signInWithGoogle: auth.signInWithGoogle,
+    signOut: auth.signOut,
+  };
 }

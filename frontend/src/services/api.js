@@ -1,8 +1,19 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
+// P6-21: 由 useAuth 設定，供 apiFetch 取得目前登入者的 access token
+let authTokenGetter = null;
+export function setAuthTokenGetter(fn) {
+  authTokenGetter = fn;
+}
+
 async function apiFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (authTokenGetter) {
+    const token = await authTokenGetter();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     ...options,
   });
   if (!res.ok) {
