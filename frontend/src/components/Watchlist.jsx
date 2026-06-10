@@ -10,7 +10,7 @@ import {
   migrateLots, lotShares, lotCostTotal, lotMktVal, lotPnlAmt, lotPnlPct,
   calcPortfolio, fmtPct, fmtAmt, fmtShares,
   calcRR, calcPositionSize, calcTrailingStopPrice, isTrailingStopTriggered,
-  calcChipScore, calcExitedLot, calcPerformance,
+  calcChipScore, calcExitedLot, calcPerformance, getExitedEntries,
 } from '../utils/portfolio';
 
 // ─────────────────────────────────────────────────────────────
@@ -63,16 +63,7 @@ function MdText({ text }) {
 // ─────────────────────────────────────────────────────────────
 function PerformanceDashboard({ watchlist }) {
   // 收集所有已出場的 lot（exitPrice 存在）
-  const exitedEntries = useMemo(() => {
-    const arr = [];
-    for (const item of watchlist) {
-      const lots = item.lots || [];
-      for (const lot of lots) {
-        if (lot.exitPrice) arr.push({ lot, code: item.code, name: item.name, strategy: item.strategy });
-      }
-    }
-    return arr;
-  }, [watchlist]);
+  const exitedEntries = useMemo(() => getExitedEntries(watchlist), [watchlist]);
 
   const stats = useMemo(() => calcPerformance(exitedEntries), [exitedEntries]);
 

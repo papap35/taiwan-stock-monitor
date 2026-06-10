@@ -5,7 +5,8 @@
       "name": "frontend",
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["--cwd", "frontend", "dev"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

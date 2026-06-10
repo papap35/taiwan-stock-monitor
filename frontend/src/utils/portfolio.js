@@ -451,6 +451,21 @@ export function calcExitedLot(lot) {
 }
 
 /**
+ * 收集 watchlist 中所有已出場（含 exitPrice）的 lot。
+ * @param {WatchlistItem[]} watchlist
+ * @returns {Array<{ lot: object, code: string, name: string, strategy: string }>}
+ */
+export function getExitedEntries(watchlist) {
+  const arr = [];
+  for (const item of watchlist) {
+    for (const lot of item.lots || []) {
+      if (lot.exitPrice) arr.push({ lot, code: item.code, name: item.name, strategy: item.strategy });
+    }
+  }
+  return arr;
+}
+
+/**
  * 從所有已出場 Lot 計算績效統計。
  * @param {Array<{ lot: object, code: string, name: string, strategy: string }>} exitedEntries
  * @returns {object} 績效統計

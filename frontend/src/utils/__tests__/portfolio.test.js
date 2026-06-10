@@ -713,7 +713,31 @@ describe('calcChipScore', () => {
 // ─────────────────────────────────────────────────────────
 // calcExitedLot / calcPerformance
 // ─────────────────────────────────────────────────────────
-import { calcExitedLot, calcPerformance } from '../portfolio.js';
+import { calcExitedLot, calcPerformance, getExitedEntries } from '../portfolio.js';
+
+describe('getExitedEntries', () => {
+  it('收集所有含 exitPrice 的 lot，並附帶股票資訊', () => {
+    const watchlist = [
+      { code: '2330', name: '台積電', strategy: 'long', lots: [
+        { id: 'l1', exitPrice: 900, cost: 800 },
+        { id: 'l2', cost: 850 }, // 未出場，不應收集
+      ] },
+      { code: '2317', name: '鴻海', strategy: 'swing', lots: [
+        { id: 'l3', exitPrice: 110, cost: 100 },
+      ] },
+    ];
+    const entries = getExitedEntries(watchlist);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ code: '2330', name: '台積電', strategy: 'long' });
+    expect(entries[0].lot.id).toBe('l1');
+    expect(entries[1].lot.id).toBe('l3');
+  });
+
+  it('lots 為空或未定義時回傳空陣列', () => {
+    expect(getExitedEntries([{ code: '2330', name: '台積電' }])).toEqual([]);
+    expect(getExitedEntries([])).toEqual([]);
+  });
+});
 
 describe('calcExitedLot', () => {
   it('正常情況：計算實現損益、持有天數、年化報酬', () => {
