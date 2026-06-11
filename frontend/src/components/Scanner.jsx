@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api } from '../services/api';
 import { useStockStore } from '../stores/stockStore';
-import { SCAN_CONDITIONS, checkConditions, filterPassed } from '../utils/scanner';
+import { SCAN_CONDITIONS, checkConditions, filterPassed, BACKTESTABLE_CONDITIONS, runBacktest } from '../utils/scanner';
 
 const GROUP_ORDER = ['技術面', '籌碼面', '基本面', '量能'];
 
@@ -28,6 +28,10 @@ export default function Scanner() {
   const [results, setResults]       = useState(null);   // null=未跑, []|[...]=已跑
   const [showAllResults, setShowAllResults] = useState(false);
 
+  // ── 回測 ──────────────────────────────────────────────────────
+  const [holdDays, setHoldDays]         = useState(5);
+  const [backtestResults, setBacktestResults] = useState({}); // { [code]: { loading, error, ...stats } }
+
   // 解析輸入框的股票代號（支援空格、逗號、換行分隔）
   const parsedCodes = [...new Set(
     inputText.split(/[\s,，\n]+/).map(s => s.trim()).filter(s => /^\d{4,6}$/.test(s))
@@ -45,6 +49,7 @@ export default function Scanner() {
     if (parsedCodes.length === 0 || selected.size === 0) return;
     setScanning(true);
     setResults(null);
+    setBacktestResults({});
     setProgress({ done: 0, total: parsedCodes.length });
 
     const conditionIds = [...selected];
@@ -93,8 +98,29 @@ export default function Scanner() {
     setScanning(false);
   }, [parsedCodes, selected]);
 
+  // 持有天數變更時，已執行的回測結果失效，需重新執行
+  useEffect(() => {
+    setBacktestResults({});
+  }, [holdDays]);
+
   const passedResults = results ? filterPassed(results) : [];
   const displayResults = showAllResults ? results : passedResults;
+
+  // 已選條件中可用於回測的條件
+  const backtestConditionIds = [...selected].filter(id => BACKTESTABLE_CONDITIONS.some(c => c.id === id));
+
+  const runBacktestForStock = useCallback(async (code) => {
+    if (backtestConditionIds.length === 0) return;
+    setBacktestResults(prev => ({ ...prev, [code]: { loading: true } }));
+    try {
+      const res = await api.getHistory(code, 6); // 6 個月日K，足夠近 1 個月回測 + 持有期
+      const candles = res?.candles || [];
+      const stats = runBacktest(candles, backtestConditionIds, { holdDays, lookbackDays: 20 });
+      setBacktestResults(prev => ({ ...prev, [code]: { loading: false, ...stats } }));
+    } catch (e) {
+      setBacktestResults(prev => ({ ...prev, [code]: { loading: false, error: e.message } }));
+    }
+  }, [backtestConditionIds, holdDays]);
 
   const conditionGroups = GROUP_ORDER.map(group => ({
     group,
@@ -219,11 +245,28 @@ export default function Scanner() {
                   掃描完成：{results.length} 支中 <span style={{ color: passedResults.length > 0 ? '#00c48c' : 'var(--color-text-tertiary)' }}>{passedResults.length} 支符合</span>
                 </span>
                 <div style={{ flex: 1 }} />
+                {backtestConditionIds.length > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                    回測持有
+                    <select value={holdDays} onChange={e => setHoldDays(parseInt(e.target.value))}
+                      style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: '#0a1018', border: '1px solid var(--color-border-tertiary)', color: '#e2e8f0' }}>
+                      <option value={1}>1 日</option>
+                      <option value={5}>5 日</option>
+                      <option value={10}>10 日</option>
+                    </select>
+                  </label>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-tertiary)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={showAllResults} onChange={e => setShowAllResults(e.target.checked)} style={{ accentColor: 'var(--color-brand)' }} />
                   顯示所有（含未符合）
                 </label>
               </div>
+
+              {backtestConditionIds.length === 0 && (
+                <div style={{ padding: '6px 14px', fontSize: 10, color: 'var(--color-text-tertiary)', borderBottom: '1px solid var(--color-border-tertiary)' }}>
+                  💡 回測僅支援技術面/量能條件（不含籌碼面、基本面、成交金額），請至少勾選一項以啟用回測
+                </div>
+              )}
 
               {/* 結果列表 */}
               {displayResults && displayResults.length > 0 ? (
@@ -240,6 +283,9 @@ export default function Scanner() {
                             </th>
                           );
                         })}
+                        {backtestConditionIds.length > 0 && (
+                          <th style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontWeight: 600, fontSize: 10, whiteSpace: 'nowrap', borderBottom: '1px solid var(--color-border-tertiary)', minWidth: 160 }}>回測（近 1 個月）</th>
+                        )}
                         <th style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontWeight: 600, fontSize: 10, borderBottom: '1px solid var(--color-border-tertiary)' }}>加入</th>
                       </tr>
                     </thead>
@@ -260,6 +306,31 @@ export default function Scanner() {
                                 </div>
                               </td>
                             ))}
+                            {backtestConditionIds.length > 0 && (
+                              <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                                {(() => {
+                                  const bt = backtestResults[row.code];
+                                  if (!bt) {
+                                    return (
+                                      <button onClick={() => runBacktestForStock(row.code)}
+                                        style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(100,116,139,.4)', background: 'transparent', color: 'var(--color-text-tertiary)', cursor: 'pointer' }}>
+                                        📊 執行回測
+                                      </button>
+                                    );
+                                  }
+                                  if (bt.loading) return <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>回測中…</span>;
+                                  if (bt.error) return <span style={{ fontSize: 10, color: '#ef4444' }}>失敗：{bt.error}</span>;
+                                  if (bt.selectedCount === 0) return <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>近 1 個月無選中紀錄</span>;
+                                  const winColor = bt.winRate >= 50 ? '#00c48c' : '#ef4444';
+                                  return (
+                                    <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                      <span>選中 {bt.selectedCount} 次 · 勝率 <span style={{ color: winColor }}>{bt.winRate.toFixed(0)}%</span></span>
+                                      <span>平均報酬 {bt.avgReturn >= 0 ? '+' : ''}{bt.avgReturn.toFixed(2)}% · 回撤 {bt.maxDrawdown.toFixed(2)}%</span>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            )}
                             <td style={{ padding: '7px 10px', textAlign: 'center' }}>
                               {isInWatchlist(row.code) ? (
                                 <span style={{ fontSize: 10, color: '#64748b' }}>已加入</span>

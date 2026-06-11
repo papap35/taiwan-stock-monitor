@@ -309,3 +309,62 @@ export function checkConditions(data, conditionIds) {
 export function filterPassed(scanResults) {
   return scanResults.filter(r => r.results.every(c => c.pass));
 }
+
+// ─── 回測 ────────────────────────────────────────────────────
+
+/**
+ * 可用於回測的條件：僅限只需日K資料的技術面/量能條件
+ * （籌碼面/基本面條件無歷史每日資料，無法逐日回測）
+ */
+export const BACKTESTABLE_CONDITIONS = SCAN_CONDITIONS.filter(
+  c => c.needsCandles && !c.needsInst && !c.needsMargin && !c.needsValuation
+);
+
+/**
+ * 對單一股票的歷史日K逐日套用條件，回測選股表現
+ * @param {Array<{time,open,high,low,close,volume}>} candles  日K（時間升冪）
+ * @param {string[]} conditionIds  要回測的條件 id 清單（會自動過濾為可回測條件）
+ * @param {{ holdDays?: number, lookbackDays?: number }} opts
+ *   - holdDays: 選中後持有 N 個交易日計算報酬（預設 5）
+ *   - lookbackDays: 回測最近 N 個交易日（預設 20，約 1 個月）
+ * @returns {{ trades: Array, winRate: number, avgReturn: number, maxDrawdown: number, selectedCount: number }}
+ */
+export function runBacktest(candles, conditionIds, opts = {}) {
+  const { holdDays = 5, lookbackDays = 20 } = opts;
+  const empty = { trades: [], winRate: 0, avgReturn: 0, maxDrawdown: 0, selectedCount: 0 };
+
+  const ids = (conditionIds || []).filter(id => BACKTESTABLE_CONDITIONS.some(c => c.id === id));
+  if (ids.length === 0 || !candles || candles.length < 61 + holdDays) return empty;
+
+  const lastIndex  = candles.length - 1 - holdDays;
+  const firstIndex = Math.max(60, lastIndex - lookbackDays + 1);
+  if (firstIndex > lastIndex) return empty;
+
+  const trades = [];
+  for (let i = firstIndex; i <= lastIndex; i++) {
+    const window = candles.slice(0, i + 1);
+    const today = candles[i];
+    const results = checkConditions({ candles: window }, ids);
+    if (results.every(r => r.pass)) {
+      const exit = candles[i + holdDays];
+      const returnPct = ((exit.close - today.close) / today.close) * 100;
+      trades.push({ date: today.time, entryPrice: today.close, exitPrice: exit.close, returnPct });
+    }
+  }
+
+  const selectedCount = trades.length;
+  if (selectedCount === 0) return empty;
+
+  const winRate   = (trades.filter(t => t.returnPct > 0).length / selectedCount) * 100;
+  const avgReturn = trades.reduce((s, t) => s + t.returnPct, 0) / selectedCount;
+
+  // 最大回撤：依序疊加每筆交易報酬模擬權益曲線
+  let equity = 100, peak = 100, maxDrawdown = 0;
+  for (const t of trades) {
+    equity *= (1 + t.returnPct / 100);
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.max(maxDrawdown, ((peak - equity) / peak) * 100);
+  }
+
+  return { trades, winRate, avgReturn, maxDrawdown, selectedCount };
+}
