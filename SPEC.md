@@ -380,6 +380,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
   - 各持股市值佔比圓餅圖（資產配置）
   - 各持股未實現損益排行
 - 已出場（含 exitPrice）的 lot 併入已實現損益計算
+- 使用手冊：[USER_MANUAL.md 第十六章](USER_MANUAL.md#十六庫存總覽portfolio)
 
 ---
 
