@@ -126,4 +126,10 @@ describe('buildReportMessage', () => {
     const msg = buildReportMessage('post', '收盤分析');
     assert.ok(msg.includes('📊 盤後 AI 簡報'));
   });
+
+  it('週報包含 🗓️', () => {
+    const msg = buildReportMessage('weekly', '本週總結');
+    assert.ok(msg.includes('🗓️ 本週 AI 週報'));
+    assert.ok(msg.includes('本週總結'));
+  });
 });

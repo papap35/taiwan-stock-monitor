@@ -60,12 +60,13 @@ router.get('/auto-report', (_req, res) => {
 });
 
 // POST /api/settings/auto-report — 更新自動簡報設定
-// Body: { preMarketEnabled, postMarketEnabled }
+// Body: { preMarketEnabled, postMarketEnabled, weeklyReportEnabled }
 router.post('/auto-report', (req, res) => {
-  const { preMarketEnabled, postMarketEnabled } = req.body;
+  const { preMarketEnabled, postMarketEnabled, weeklyReportEnabled } = req.body;
   const patch = {};
-  if (typeof preMarketEnabled  === 'boolean') patch.preMarketEnabled  = preMarketEnabled;
-  if (typeof postMarketEnabled === 'boolean') patch.postMarketEnabled = postMarketEnabled;
+  if (typeof preMarketEnabled    === 'boolean') patch.preMarketEnabled    = preMarketEnabled;
+  if (typeof postMarketEnabled   === 'boolean') patch.postMarketEnabled   = postMarketEnabled;
+  if (typeof weeklyReportEnabled === 'boolean') patch.weeklyReportEnabled = weeklyReportEnabled;
   scheduler.updateSettings(patch);
   res.json({ success: true, ...scheduler.getSettings() });
 });
@@ -79,6 +80,8 @@ router.post('/auto-report/trigger', async (req, res) => {
   try {
     if (type === 'pre') {
       await scheduler.runPreMarketReport();
+    } else if (type === 'weekly') {
+      await scheduler.runWeeklyReport();
     } else {
       await scheduler.runPostMarketReport();
     }

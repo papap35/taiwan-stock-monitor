@@ -18,7 +18,9 @@ const cron       = require('node-cron');
 const Anthropic  = require('@anthropic-ai/sdk');
 const twse       = require('./twse');
 const lineNotify = require('./lineNotify');
-const { buildPreMarketPrompt, buildPostMarketPrompt, truncateForLine } = require('../utils/reportHelpers');
+const supabase   = require('./supabase');
+const calendar   = require('./calendar');
+const { buildPreMarketPrompt, buildPostMarketPrompt, buildWeeklyPrompt, truncateForLine } = require('../utils/reportHelpers');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -26,6 +28,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const _settings = {
   preMarketEnabled:  process.env.AUTO_REPORT_PRE  === 'true',
   postMarketEnabled: process.env.AUTO_REPORT_POST === 'true',
+  weeklyReportEnabled: process.env.AUTO_REPORT_WEEKLY === 'true',
 };
 
 function getSettings() {
@@ -109,6 +112,77 @@ async function runPostMarketReport() {
   }
 }
 
+// ── 自選股本週漲跌幅 ─────────────────────────────────────────────
+
+/**
+ * 計算自選股本週（最近 5 個交易日）漲跌幅
+ * 若 Supabase 未設定或無自選股，回傳空陣列
+ */
+async function fetchWatchlistWeeklyPerf() {
+  if (!supabase.isEnabled()) return [];
+  const watchlist = await supabase.pullWatchlist();
+  if (!watchlist || !watchlist.length) return [];
+
+  const results = [];
+  for (const item of watchlist.slice(0, 20)) {
+    if (!item?.code) continue;
+    try {
+      const history = await twse.fetchHistory(item.code, 1);
+      if (history.length < 2) continue;
+      const last  = history[history.length - 1];
+      const prior = history[Math.max(0, history.length - 1 - 5)];
+      if (!prior.close) continue;
+      const weeklyChangePct = ((last.close - prior.close) / prior.close) * 100;
+      results.push({ code: item.code, name: item.name || item.code, weeklyChangePct });
+    } catch (e) {
+      console.warn(`[Scheduler] 週報抓取 ${item.code} 歷史價格失敗:`, e.message);
+    }
+  }
+
+  return results.sort((a, b) => b.weeklyChangePct - a.weeklyChangePct);
+}
+
+// ── 週報推播 ─────────────────────────────────────────────────────
+
+async function runWeeklyReport() {
+  if (!_settings.weeklyReportEnabled) return;
+  if (!lineNotify.hasToken()) {
+    console.log('[Scheduler] 週報跳過：未設定 LINE token');
+    return;
+  }
+
+  console.log('[Scheduler] 開始生成週報摘要…');
+  try {
+    const [taiex, breadth, institutional] = await Promise.allSettled([
+      twse.fetchTaiex(),
+      twse.fetchMarketBreadth(),
+      twse.fetchInstitutionalAll(),
+    ]).then(r => r.map(x => x.status === 'fulfilled' ? x.value : null));
+
+    const watchlistPerf = await fetchWatchlistWeeklyPerf().catch(() => []);
+
+    let upcomingEvents = [];
+    try {
+      const events = await calendar.fetchAllEvents();
+      const upcoming = calendar.filterUpcoming(events, 7);
+      upcomingEvents = watchlistPerf.length
+        ? calendar.getEventsForCodes(upcoming, watchlistPerf.map(s => s.code))
+        : upcoming;
+    } catch (e) {
+      console.warn('[Scheduler] 週報抓取行事曆事件失敗:', e.message);
+    }
+
+    const prompt = buildWeeklyPrompt({ taiex, breadth, institutional, watchlistPerf, upcomingEvents });
+    const text   = await generateReport(prompt);
+    const msg    = lineNotify.buildReportMessage('weekly', truncateForLine(text));
+
+    await lineNotify.sendLineNotify(lineNotify.getToken(), msg);
+    console.log('[Scheduler] 週報摘要推播完成');
+  } catch (err) {
+    console.error('[Scheduler] 週報摘要失敗:', err.message);
+  }
+}
+
 // ── cron 初始化 ───────────────────────────────────────────────────
 
 function initScheduler() {
@@ -122,13 +196,19 @@ function initScheduler() {
     timezone: 'Asia/Taipei',
   });
 
-  console.log('[Scheduler] 自動簡報排程已啟動（盤前 08:45 / 盤後 13:35，週一至週五）');
+  // 週報：每週五 14:30（收盤後）
+  cron.schedule('30 14 * * 5', runWeeklyReport, {
+    timezone: 'Asia/Taipei',
+  });
+
+  console.log('[Scheduler] 自動簡報排程已啟動（盤前 08:45 / 盤後 13:35 / 週報 週五 14:30）');
 }
 
 module.exports = {
   initScheduler,
   runPreMarketReport,
   runPostMarketReport,
+  runWeeklyReport,
   getSettings,
   updateSettings,
 };

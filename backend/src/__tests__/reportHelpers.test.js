@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const {
   buildPreMarketPrompt,
   buildPostMarketPrompt,
+  buildWeeklyPrompt,
   truncateForLine,
 } = require('../utils/reportHelpers');
 
@@ -88,6 +89,52 @@ describe('buildPostMarketPrompt', () => {
   it('無資料時包含佔位文字', () => {
     const p = buildPostMarketPrompt({});
     assert.ok(p.includes('無市場資料'));
+  });
+});
+
+// ── buildWeeklyPrompt ────────────────────────────────────────────
+
+describe('buildWeeklyPrompt', () => {
+  it('包含本週大盤資訊', () => {
+    const p = buildWeeklyPrompt({ taiex: mockTaiex });
+    assert.ok(p.includes('20,000'));
+    assert.ok(p.includes('本週收盤大盤'));
+  });
+
+  it('包含三大法人資料（加總）', () => {
+    const p = buildWeeklyPrompt({ institutional: mockInstitutional });
+    assert.ok(p.includes('+6,000'));
+  });
+
+  it('包含自選股本週漲跌幅排行', () => {
+    const p = buildWeeklyPrompt({
+      watchlistPerf: [
+        { code: '2330', name: '台積電', weeklyChangePct: 3.21 },
+        { code: '2317', name: '鴻海', weeklyChangePct: -1.5 },
+      ],
+    });
+    assert.ok(p.includes('台積電(2330)：+3.21%'));
+    assert.ok(p.includes('鴻海(2317)：-1.50%'));
+  });
+
+  it('包含下週關注事件', () => {
+    const p = buildWeeklyPrompt({
+      upcomingEvents: [
+        { code: '2330', name: '台積電', type: '除息', date: '2026-06-20' },
+      ],
+    });
+    assert.ok(p.includes('下週關注事件'));
+    assert.ok(p.includes('台積電(2330)'));
+  });
+
+  it('無資料時包含佔位文字', () => {
+    const p = buildWeeklyPrompt({});
+    assert.ok(p.includes('無市場資料'));
+  });
+
+  it('包含週報指令字', () => {
+    const p = buildWeeklyPrompt({});
+    assert.ok(p.includes('週報摘要'));
   });
 });
 
