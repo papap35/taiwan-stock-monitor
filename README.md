@@ -217,3 +217,10 @@ docker-compose up --build
 - [功能規格書 SPEC.md](./SPEC.md)
 - [AI Agent 開發規範 AGENTS.md](./AGENTS.md)
 - [使用手冊 USER_MANUAL.md](./USER_MANUAL.md)
+- [貢獻指南 CONTRIBUTING.md](./CONTRIBUTING.md)
+
+---
+
+## 授權
+
+本專案採用 [MIT License](./LICENSE)。
