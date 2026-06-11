@@ -64,13 +64,18 @@ function buildAlertMessage(alert, quote) {
 }
 
 /**
- * 每日簡報訊息（盤前/盤後）
- * @param {'pre'|'post'} type
+ * 簡報訊息（盤前/盤後/週報）
+ * @param {'pre'|'post'|'weekly'} type
  * @param {string} content   AI 簡報文字
  * @returns {string}
  */
 function buildReportMessage(type, content) {
-  const prefix = type === 'pre' ? '📋 盤前 AI 簡報' : '📊 盤後 AI 簡報';
+  const PREFIXES = {
+    pre:    '📋 盤前 AI 簡報',
+    post:   '📊 盤後 AI 簡報',
+    weekly: '🗓️ 本週 AI 週報',
+  };
+  const prefix = PREFIXES[type] || '📋 AI 簡報';
   const now = new Date().toLocaleDateString('zh-TW');
   return `\n${prefix} ${now}\n${'─'.repeat(20)}\n${content}`;
 }

@@ -398,15 +398,16 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 24. AI 週報摘要
+#### 24. AI 週報摘要 `[x]`
 
 **背景**：已有盤前/盤後 AI 簡報（P5-20），但缺少週期性整理，難以掌握中期趨勢。
 
-**功能規格**：
-- 每週五收盤後（或手動觸發）產生「本週自選股總結」
-- 內容：本週自選股漲跌幅排行、三大法人籌碼變化、技術面轉折提醒、下週關注事件（連結行事曆 P5-19）
-- 沿用現有 AI 分析架構（Claude API），格式比照每日簡報
-- 可選擇透過 LINE Notify 推播
+**已實作**：
+- 每週五 14:30（台灣時間，收盤後）自動產生「本週自選股總結」，「設定」頁「自動 AI 簡報排程」卡片新增「AI 週報摘要」開關與立即觸發按鈕（[Settings.jsx](frontend/src/components/Settings.jsx)）
+- 內容：本週大盤走勢、自選股本週漲跌幅排行（取自 Supabase 自選股清單，逐檔以 `fetchHistory` 計算近 5 個交易日漲跌幅）、三大法人籌碼變化、下週 7 日內關注事件（連結行事曆 P5-19）
+- 沿用現有 AI 分析架構（`claude-haiku-4-5`），格式比照每日簡報（[scheduler.js](backend/src/services/scheduler.js)、[reportHelpers.js](backend/src/utils/reportHelpers.js)）
+- 透過 LINE Notify 推播（`buildReportMessage('weekly', ...)`）
+- 若 Supabase 未設定或自選股為空，自選股漲跌排行與相關事件區塊會省略，僅呈現大盤與法人資訊
 
 ---
 

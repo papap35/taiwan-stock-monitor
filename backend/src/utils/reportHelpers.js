@@ -95,6 +95,64 @@ ${market || '（無市場資料）'}
 }
 
 /**
+ * 建構週報摘要 prompt
+ * @param {{ taiex, breadth, institutional, watchlistPerf, upcomingEvents }} ctx
+ *   - watchlistPerf: [{ code, name, weeklyChangePct }]（依漲跌幅排序）
+ *   - upcomingEvents: [{ code, name, type, date }]（未來 7 天事件）
+ * @returns {string}
+ */
+function buildWeeklyPrompt(ctx = {}) {
+  const { taiex, breadth, institutional, watchlistPerf, upcomingEvents } = ctx;
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+
+  let market = '';
+  if (taiex) {
+    market += `\n【本週收盤大盤】
+加權指數：${taiex.value?.toLocaleString()} 點（${taiex.changePercent >= 0 ? '+' : ''}${taiex.changePercent}%）`;
+  }
+  if (breadth) {
+    market += `\n上漲：${breadth.up} 家，下跌：${breadth.down} 家，平盤：${breadth.flat} 家`;
+  }
+  if (institutional?.stocks?.length) {
+    const totFi = institutional.stocks.reduce((s, r) => s + (r.fiNet || 0), 0);
+    const totIt = institutional.stocks.reduce((s, r) => s + (r.itNet || 0), 0);
+    const totDl = institutional.stocks.reduce((s, r) => s + (r.dealerNet || 0), 0);
+    market += `\n【三大法人（最近交易日合計）】
+外資：${totFi >= 0 ? '+' : ''}${totFi.toLocaleString()} 張
+投信：${totIt >= 0 ? '+' : ''}${totIt.toLocaleString()} 張
+自營商：${totDl >= 0 ? '+' : ''}${totDl.toLocaleString()} 張`;
+  }
+
+  let watchlist = '';
+  if (watchlistPerf && watchlistPerf.length) {
+    const lines = watchlistPerf.map(s =>
+      `${s.name}(${s.code})：${s.weeklyChangePct >= 0 ? '+' : ''}${s.weeklyChangePct.toFixed(2)}%`);
+    watchlist = `\n【自選股本週漲跌幅】\n${lines.join('\n')}`;
+  }
+
+  let events = '';
+  if (upcomingEvents && upcomingEvents.length) {
+    const lines = upcomingEvents.map(e => `${e.date} ${e.name}(${e.code}) ${e.type}`);
+    events = `\n【下週關注事件】\n${lines.join('\n')}`;
+  }
+
+  return `現在時間：${now}（台灣），本週交易週期已結束。
+
+${market || '（無市場資料）'}
+${watchlist}
+${events}
+
+請提供本週週報摘要，包含：
+1. 本週大盤走勢總結
+2. 自選股本週表現排行與簡評（如有資料）
+3. 三大法人籌碼變化解讀（如有資料）
+4. 技術面轉折提醒（如有明顯轉折訊號）
+5. 下週關注事件與操作建議（如有資料）
+
+格式：條列式，每點 1-3 句，最後一行給出下週整體操作基調（積極偏多/保守觀望/偏空防守）。`;
+}
+
+/**
  * 將 AI 回應截斷至適合 LINE 推播的長度（LINE 訊息上限 1000 字）
  * @param {string} text
  * @param {number} maxLen
@@ -108,5 +166,6 @@ function truncateForLine(text, maxLen = 900) {
 module.exports = {
   buildPreMarketPrompt,
   buildPostMarketPrompt,
+  buildWeeklyPrompt,
   truncateForLine,
 };

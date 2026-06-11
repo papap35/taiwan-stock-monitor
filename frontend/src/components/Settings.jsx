@@ -61,7 +61,7 @@ export default function Settings() {
   };
 
   // ── 自動簡報開關 ──────────────────────────────────────────────
-  const [autoReport, setAutoReport] = useState({ preMarketEnabled: false, postMarketEnabled: false });
+  const [autoReport, setAutoReport] = useState({ preMarketEnabled: false, postMarketEnabled: false, weeklyReportEnabled: false });
 
   useEffect(() => {
     api.getAutoReportSettings().then(r => setAutoReport(r)).catch(() => {});
@@ -80,9 +80,10 @@ export default function Settings() {
   } = useCloudSync();
 
   const handleTriggerReport = async (type) => {
+    const LABELS = { pre: '盤前', post: '盤後', weekly: '週報' };
     try {
       await api.triggerAutoReport(type);
-      alert(`${type === 'pre' ? '盤前' : '盤後'}簡報已觸發，請查看 LINE！`);
+      alert(`${LABELS[type] || ''}簡報已觸發，請查看 LINE！`);
     } catch (e) {
       alert('觸發失敗：' + e.message);
     }
@@ -264,6 +265,13 @@ export default function Settings() {
             time: '13:35',
             desc: '今日大盤覆盤 + 法人動向 + 明日展望',
             type: 'post',
+          },
+          {
+            key: 'weeklyReportEnabled',
+            label: 'AI 週報摘要',
+            time: '週五 14:30',
+            desc: '本週自選股漲跌排行 + 法人籌碼變化 + 下週關注事件',
+            type: 'weekly',
           },
         ].map(item => (
           <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
