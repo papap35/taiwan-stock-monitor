@@ -132,6 +132,22 @@ export default function Settings() {
             <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>%</span>
           </div>
         </Row>
+        <Row label="總資金" desc="用於自選股「建議買入張數」計算，0 表示未設定">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="number" min={0} step={10000} value={settings.totalCapital}
+              onChange={e => updateSettings({ totalCapital: Math.max(0, parseInt(e.target.value) || 0) })}
+              style={{ ...sel, width: 110, textAlign: 'right' }} />
+            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>元</span>
+          </div>
+        </Row>
+        <Row label="單筆最大風險比例" desc="單筆交易最大可承受虧損占總資金比例，建議 1~2%">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="number" min={0.1} max={20} step={0.1} value={settings.maxRiskPct}
+              onChange={e => updateSettings({ maxRiskPct: Math.max(0, parseFloat(e.target.value) || 0) })}
+              style={{ ...sel, width: 64, textAlign: 'center' }} />
+            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>%</span>
+          </div>
+        </Row>
       </div>
 
       {/* 通知設定 */}

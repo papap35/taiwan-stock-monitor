@@ -73,6 +73,8 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 顯示：建議張數、實際最大虧損金額、占總資金比例
 - 位置：新增買入 Modal 下方（折疊式展開）
 
+**實作備註**：「設定」頁「顯示設定」卡片新增「總資金」「單筆最大風險比例」輸入欄位（[Settings.jsx](frontend/src/components/Settings.jsx)），新增買入 Modal 已串接 `calcPositionSize` 顯示建議張數與最大虧損（[Watchlist.jsx](frontend/src/components/Watchlist.jsx)）。
+
 ---
 
 ### P1 — 技術分析強化（影響進出場判斷品質）
