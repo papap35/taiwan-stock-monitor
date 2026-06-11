@@ -7,10 +7,16 @@
  * POST /api/sync/push        - 推送所有資料到 Supabase
  * POST /api/sync/push/watchlist  - 只推送 watchlist
  * POST /api/sync/push/alerts     - 只推送 alerts
+ *
+ * 使用者識別：前端帶 `Authorization: Bearer <supabase access token>`，
+ * 經 resolveUserId middleware 解析為 req.userId（未登入則為 DEFAULT_USER_ID）。
  */
 const express = require('express');
 const router  = express.Router();
 const sb      = require('../services/supabase');
+const { resolveUserId } = require('../middleware/auth');
+
+router.use(resolveUserId);
 
 // GET /api/sync/status
 router.get('/status', (req, res) => {
@@ -21,7 +27,7 @@ router.get('/status', (req, res) => {
 router.get('/pull', async (req, res) => {
   if (!sb.isEnabled()) return res.status(503).json({ error: 'Supabase not configured' });
   try {
-    const data = await sb.pullAll();
+    const data = await sb.pullAll(req.userId);
     res.json(data);
   } catch (err) {
     console.error('[sync] pull error:', err.message);
@@ -33,7 +39,7 @@ router.get('/pull', async (req, res) => {
 router.post('/push', async (req, res) => {
   if (!sb.isEnabled()) return res.status(503).json({ error: 'Supabase not configured' });
   try {
-    await sb.pushAll(req.body);
+    await sb.pushAll(req.body, req.userId);
     res.json({ ok: true });
   } catch (err) {
     console.error('[sync] push error:', err.message);
@@ -45,7 +51,7 @@ router.post('/push', async (req, res) => {
 router.post('/push/watchlist', async (req, res) => {
   if (!sb.isEnabled()) return res.status(503).json({ error: 'Supabase not configured' });
   try {
-    await sb.pushWatchlist(req.body.watchlist ?? []);
+    await sb.pushWatchlist(req.body.watchlist ?? [], req.userId);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -56,7 +62,7 @@ router.post('/push/watchlist', async (req, res) => {
 router.post('/push/alerts', async (req, res) => {
   if (!sb.isEnabled()) return res.status(503).json({ error: 'Supabase not configured' });
   try {
-    await sb.pushAlerts(req.body.alerts ?? []);
+    await sb.pushAlerts(req.body.alerts ?? [], req.userId);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

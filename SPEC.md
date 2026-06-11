@@ -348,32 +348,38 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ### P6 — 帳戶與進階分析
 
-#### 21. Google 登入（Supabase Auth）
+#### 21. Google 登入（Supabase Auth）`[x]`
 
 **背景**：目前雲端同步寫死 `user_id = 'default'`，所有使用者共用同一筆雲端資料，無法真正做到多裝置／多使用者隔離，且 RLS 形同虛設。
 
-**功能規格**：
-- 啟用 Supabase Auth，串接 Google OAuth provider
-- 前端新增「使用 Google 登入」按鈕（放在設定頁雲端同步區塊上方）
-- 登入後改用 `auth.uid()` 作為 `user_id`，取代寫死的 `'default'`
-- `supabase_migration.sql` 更新：4 張表 `user_id` 改為對應 `auth.users.id`（uuid），並啟用 RLS（`auth.uid() = user_id`）
-- 後端 `/api/sync/*` 改為驗證前端帶上的 Supabase JWT，從中解析 `user_id`
-- 未登入時：雲端同步功能隱藏／停用，App 維持純 LocalStorage 模式（不影響現有使用者）
-- 設定頁顯示登入狀態（使用者 email/頭像）與登出按鈕
+**已實作**：
+- 前端 `services/supabaseClient.js`：僅供 Auth 使用（登入狀態、access token），資料讀寫仍一律透過 `/api/sync/*`
+- `hooks/useAuth.js`：`signInWithGoogle` / `signOut` / `getAccessToken`，依 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 是否設定決定 `enabled`
+- `services/api.js`：新增 `setAuthTokenGetter`，所有 API 請求自動帶上 `Authorization: Bearer <access token>`（未登入則不帶）
+- `hooks/useCloudSync.js`：登入狀態變化時自動 `pull()` 該使用者的雲端資料
+- 設定頁雲端同步區塊新增登入狀態顯示（email/頭像）與「使用 Google 登入」/「登出」按鈕；未設定 Supabase Auth 時不顯示
+- 後端 `middleware/auth.js`（`resolveUserId`）：解析 `Authorization` header 中的 Supabase JWT → `req.userId`；無/無效 token 時 fallback 為 `DEFAULT_USER_ID = 'default'`（向下相容單用戶模式）
+- `services/supabase.js`：所有 pull/push 函式改為以 `userId` 參數隔離資料
+- `supabase_migration.sql`：4 張表 PK 改為 `(id, user_id)`（同代號可分屬不同使用者）、新增 RLS policy（`auth.uid()::text = user_id`）與既有環境升級 SQL
+- 測試：後端 `auth.test.js`（5 tests）、前端 `useAuth.test.js`（3 tests）
+
+**手動設定（需使用者自行完成）**：
+- Supabase Dashboard → Authentication → Providers 啟用 Google，並填入 Google Cloud OAuth Client ID/Secret
+- 前端 `.env` 設定 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+- 既有環境執行 `supabase_migration.sql` 中的升級 SQL（調整 PK 為 `(id, user_id)` 並啟用 RLS）
 
 ---
 
-#### 22. 庫存/損益總覽（Portfolio）
+#### 22. 庫存/損益總覽（Portfolio）`[x]`
 
 **背景**：自選股目前偏向「關注清單」，沒有持有成本與損益總覽，無法一眼看出資產配置與整體績效。
 
-**功能規格**：
-- 自選股可標記「持有中」，輸入成本價與股數（可多筆分批買入）
-- 新增「庫存總覽」分頁：
+**已實作**：
+- 「庫存總覽」分頁：
   - 總市值、總成本、未實現損益（金額 / %）
   - 各持股市值佔比圓餅圖（資產配置）
   - 各持股未實現損益排行
-- 與交易日誌（P3-12）打通：已實現損益併入總損益計算
+- 已出場（含 exitPrice）的 lot 併入已實現損益計算
 
 ---
 
