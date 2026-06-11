@@ -4,10 +4,10 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare yarn@stable --activate
 
-COPY package.json yarn.lock* ./
+COPY backend/package.json backend/yarn.lock* ./
 RUN yarn install --frozen-lockfile --production
 
-COPY src ./src
+COPY backend/src ./src
 
 EXPOSE 3001
 
