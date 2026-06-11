@@ -79,6 +79,16 @@
 - 結果表格顯示每支股票各條件通過狀態與指標數值
 - 一鍵加入自選股；快速預設（全選技術面 / 籌碼乾淨 / 價值股）
 
+### 💼 庫存/損益總覽（Portfolio）
+- 總市值、總成本、未實現損益（金額 / %）一覽
+- 各持股市值佔比圓餅圖（資產配置）
+- 各持股未實現損益排行、已實現損益併入總損益
+
+### ☁️ 雲端同步與 Google 登入（選配）
+- 設定 Supabase 後，可將自選股、警報、設定備份至雲端，換裝置或清除快取後可還原
+- 支援 Google 登入：登入後資料以帳號隔離，可在多裝置間同步個人資料
+- 未設定 Supabase / 未登入時，App 仍以 LocalStorage 純本地模式運作，不受影響
+
 ---
 
 ## 架構說明
@@ -155,6 +165,30 @@ docker-compose up --build
    VITE_API_URL=https://taiwan-stock-backend-xxxx.up.railway.app
    ```
 5. 點擊 **Deploy**
+
+### 步驟三：設定雲端同步與 Google 登入（選配）
+
+需要先有 Supabase 專案並執行 [`supabase_migration.sql`](./supabase_migration.sql)。
+
+1. **後端 Railway** → Variables 新增：
+   ```
+   SUPABASE_URL=https://<your-project-ref>.supabase.co
+   SUPABASE_SERVICE_KEY=<service_role key>
+   ```
+2. **前端 Vercel** → Environment Variables 新增：
+   ```
+   VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+   VITE_SUPABASE_ANON_KEY=<anon/public key>
+   ```
+   兩組 URL 皆可在 Supabase Dashboard → **Project Settings → API** 找到。
+3. **啟用 Google 登入**（可選）：
+   - Supabase Dashboard → **Authentication → Providers → Google**，複製顯示的 **Callback URL**
+   - 到 [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials，建立或編輯 OAuth 2.0 Client：
+     - **Authorized redirect URIs** 加入上面複製的 Supabase Callback URL
+     - **Authorized JavaScript origins** 加入前端網址（如 `https://your-app.vercel.app`）
+   - 將 Client ID / Secret 貼回 Supabase 的 Google Provider 設定並啟用
+
+未設定 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 時，登入按鈕不會顯示，App 以單一帳號模式運作（不影響其他功能）。
 
 ---
 
