@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calcRSI14, calcMAValue, calcHighN, calcKDLatest,
   checkConditions, filterPassed,
+  BACKTESTABLE_CONDITIONS, runBacktest,
 } from '../scanner';
 
 // ─── 測試資料工廠 ────────────────────────────────────────────
@@ -251,6 +252,62 @@ describe('checkConditions — 多條件組合', () => {
     const results = checkConditions({ inst }, ['fi_buy_3d', 'it_buy']);
     expect(results[0].pass).toBe(false); // fi_buy_3d 不通過
     expect(results[1].pass).toBe(true);  // it_buy 通過
+  });
+});
+
+// ─── BACKTESTABLE_CONDITIONS / runBacktest ────────────────────
+
+const makeHistCandles = (closes) =>
+  closes.map((close, i) => ({ time: i, open: close - 1, high: close + 3, low: close - 3, close, volume: 10000 }));
+
+describe('BACKTESTABLE_CONDITIONS', () => {
+  it('只包含僅需日K的條件，排除籌碼面/基本面/報價條件', () => {
+    const ids = BACKTESTABLE_CONDITIONS.map(c => c.id);
+    expect(ids).toContain('above_ma60');
+    expect(ids).toContain('rsi_oversold');
+    expect(ids).not.toContain('fi_buy_3d');
+    expect(ids).not.toContain('it_buy');
+    expect(ids).not.toContain('margin_decrease');
+    expect(ids).not.toContain('pe_low');
+    expect(ids).not.toContain('yield_high');
+    expect(ids).not.toContain('pb_low');
+    expect(ids).not.toContain('turnover_high');
+  });
+});
+
+describe('runBacktest', () => {
+  it('資料不足時回傳空結果', () => {
+    const result = runBacktest(makeHistCandles(Array(30).fill(100)), ['above_ma60'], { holdDays: 5 });
+    expect(result.selectedCount).toBe(0);
+    expect(result.trades).toEqual([]);
+  });
+
+  it('條件不可回測時回傳空結果', () => {
+    const candles = makeHistCandles(Array(90).fill(100));
+    const result = runBacktest(candles, ['pe_low', 'fi_buy_3d'], { holdDays: 5 });
+    expect(result.selectedCount).toBe(0);
+  });
+
+  it('above_ma60 條件：站上季線期間皆選中，報酬與回撤計算正確', () => {
+    // 前 60 根 close=100，之後 close=200（持續站上 MA60）
+    const candles = makeHistCandles([...Array(60).fill(100), ...Array(30).fill(200)]);
+    const result = runBacktest(candles, ['above_ma60'], { holdDays: 5, lookbackDays: 20 });
+
+    expect(result.selectedCount).toBe(20);
+    // 進場與出場價皆為 200，報酬為 0
+    expect(result.avgReturn).toBeCloseTo(0, 5);
+    expect(result.winRate).toBe(0);
+    expect(result.maxDrawdown).toBeCloseTo(0, 5);
+    expect(result.trades[0]).toHaveProperty('date');
+    expect(result.trades[0]).toHaveProperty('entryPrice');
+    expect(result.trades[0]).toHaveProperty('exitPrice');
+  });
+
+  it('混合可回測與不可回測條件時，僅套用可回測條件', () => {
+    const candles = makeHistCandles([...Array(60).fill(100), ...Array(30).fill(200)]);
+    const withInvalid = runBacktest(candles, ['above_ma60', 'pe_low'], { holdDays: 5, lookbackDays: 20 });
+    const onlyValid   = runBacktest(candles, ['above_ma60'], { holdDays: 5, lookbackDays: 20 });
+    expect(withInvalid).toEqual(onlyValid);
   });
 });
 
