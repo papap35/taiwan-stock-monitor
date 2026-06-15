@@ -416,7 +416,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 > 依「相對好做 → 需多資料源整合 → 進階差異化」排序，建議依序開發：25 → 26 → 28 → 31 → 27 → 35 → 33 → 36 → 34 → 30 → 29 → 32
 
-#### 25. K 線繪圖工具（趨勢線 / 水平線標註） `[ ]`
+#### 25. K 線繪圖工具（趨勢線 / 水平線標註） `[x]`
 
 **背景**：目前 K 線圖僅顯示均線 / KD / MACD 等技術指標，無法手動標註支撐壓力位或趨勢線。XQ、CMoney 等主流看盤系統皆支援手繪標註並保存，是判斷進出場時機的常用工具。
 
@@ -430,6 +430,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 標註線需隨圖表縮放 / 平移正確定位（沿用 recharts `ReferenceLine` / 自訂 SVG overlay）
 - 可刪除單一標註（點擊標註顯示刪除按鈕）、提供「清除全部標註」按鈕
 - 後續可選：登入後同步至 Supabase（沿用 P5-17 既有同步機制）
+
+**已實作**：
+- 純函式邏輯抽至 `frontend/src/utils/chartAnnotations.js`（`annotationStorageKey` / `createAnnotation` / `addAnnotation` / `removeAnnotation`），含完整測試
+- 圖表底層為 lightweight-charts v5，水平線使用 `series.createPriceLine()`、趨勢線使用 `chart.addSeries(LineSeries, ...)`（非 recharts ReferenceLine）
+- K 線 Tab 工具列新增「－ 水平線」「／ 趨勢線」繪圖模式按鈕，啟用後透過 `chart.subscribeClick()` 擷取點擊座標並用 `coordinateToPrice()` 換算成價格
+- 圖表右上角顯示已標註清單，每筆可點 × 個別刪除；工具列提供「清除標註 (N)」一次清空全部
+- 切換股票時自動從 localStorage 載入對應標註並重繪
 
 ---
 
