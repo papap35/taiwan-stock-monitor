@@ -419,7 +419,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - **完成**：113 後端 / 182 前端，共 295 個單元測試
   - 新增 `twse.test.js`（17 tests）：mock node-fetch 測試 API 資料解析
   - 新增 `websocket.test.js`（10 tests）：collectSubscribedCodes / broadcast 邏輯
-- **剩餘**：E2E（Playwright）尚未實作
+- **完成**：新增 `e2e/`（Playwright），涵蓋首頁儀表板、自選股新增/刪除、條件選股掃描、庫存總覽共 5 個測試，並整合至 CI（`e2e` job，依賴 backend/frontend job）
 
 #### T2. 後端快取策略清晰化 ✅
 
