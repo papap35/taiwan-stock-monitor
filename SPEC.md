@@ -433,7 +433,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 26. 多股同列比較（疊圖） `[ ]`
+#### 26. 多股同列比較（疊圖） `[x]`
 
 **背景**：觀察自選股相對大盤或同族群表現時，需要把多檔股票的漲跌幅 % 疊在同一張圖比較相對強弱，這是判斷「強勢股」的常用手法。
 
@@ -443,6 +443,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 提供區間切換：1 個月 / 3 個月 / 6 個月 / 1 年
 - 沿用既有 `fetchHistory`，前端逐檔正規化後以 recharts `LineChart` 多 series 呈現
 - 圖例可切換顯示 / 隱藏各條線；滑過圖表顯示當日各標的漲跌幅 tooltip
+
+**已實作**：
+- 純函式邏輯抽至 `frontend/src/utils/compareChart.js`（`normalizeSeries` / `mergeSeries`），含完整測試
+- 新增獨立頁籤「📐 股票比較」(`frontend/src/components/StockCompare.jsx`)，從自選股勾選最多 5 檔
+- 區間切換 1M/3M/6M/1Y，沿用 `api.getHistory(code, months)`，前端正規化為「期初 = 0%」後用 recharts `LineChart` 多 series 疊圖
+- 圖例可點擊切換顯示/隱藏個別股票線；選取清單存於 localStorage（`compare_selected_codes`）
+- 「加入大盤 TAIEX」延伸為新項目 #37（TWSE 無對應股票代號歷史 API，需另外串接指數歷史資料來源，資料來源待確認）
 
 ---
 
@@ -561,6 +568,16 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 掃描器新增「策略比較」模式：可建立 2～3 組獨立的條件組合（各自勾選一組 `SCAN_CONDITIONS`）
 - 對同一份代號清單分別執行 `runBacktest`，結果以表格並列呈現：各策略的選中次數、勝率、平均報酬、最大回撤
 - 沿用既有 `runBacktest` 純函式，僅前端 UI 調整為多組條件管理與並列顯示，不需新增後端 API
+
+---
+
+#### 37. 多股比較加入大盤 TAIEX `[ ]`
+
+**背景**：P7-26 多股同列比較目前僅支援自選股之間比較，無法加入大盤 TAIEX 作為對照基準。實作時發現 TWSE `STOCK_DAY` API 僅支援個股代號，無對應的加權指數歷史資料端點，需另外確認資料來源。
+
+**功能規格**：
+- 後端新增大盤指數歷史資料端點（資料來源待確認，可能為 TWSE `MI_5MINS_HIST` 或其他每日指數收盤資料 API）
+- 「股票比較」頁籤新增「加入大盤 TAIEX」勾選項，沿用既有 `normalizeSeries`/`mergeSeries` 正規化邏輯疊加顯示
 
 ---
 

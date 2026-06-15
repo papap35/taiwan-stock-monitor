@@ -17,6 +17,7 @@ const Market   = lazy(() => import('./components/Market'));
 const Watchlist = lazy(() => import('./components/Watchlist'));
 const Chips    = lazy(() => import('./components/Chips'));
 const Portfolio = lazy(() => import('./components/Portfolio'));
+const StockCompare = lazy(() => import('./components/StockCompare'));
 
 function TabFallback() {
   return (
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'market',   label: '大盤總覽', icon: '📈' },
   { id: 'hot',      label: '熱門股票', icon: '🔥' },
   { id: 'watch',    label: '自選股',   icon: '⭐' },
+  { id: 'compare',  label: '股票比較', icon: '📐' },
   { id: 'portfolio', label: '庫存總覽', icon: '💼' },
   { id: 'chips',    label: '籌碼分析', icon: '🧩' },
   { id: 'alerts',   label: '警報設定', icon: '🔔' },
@@ -223,6 +225,7 @@ export default function App() {
             {activeTab === 'market'   && <Market />}
             {activeTab === 'hot'      && <HotStocks />}
             {activeTab === 'watch'    && <Watchlist />}
+            {activeTab === 'compare'  && <StockCompare />}
             {activeTab === 'portfolio' && <Portfolio />}
             {activeTab === 'chips'    && <Chips />}
             {activeTab === 'alerts'   && <Alerts />}
