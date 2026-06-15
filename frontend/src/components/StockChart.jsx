@@ -5,6 +5,9 @@ import { useStockStore } from '../stores/stockStore';
 import {
   calcBollingerBands, calcVolumeMA, calcVolumeRatio, aggregateCandles,
 } from '../utils/portfolio';
+import {
+  annotationStorageKey, createAnnotation, addAnnotation, removeAnnotation,
+} from '../utils/chartAnnotations';
 
 // ── 技術指標計算 ────────────────────────────────────────
 function calcMA(candles, period) {
@@ -90,6 +93,14 @@ const CHART_PERIODS = [
 const fmtN = n => n == null ? '—' : n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
 const fmtColor = n => n > 0 ? '#ff4d4f' : n < 0 ? '#00c48c' : '#64748b';
 
+// ── K 線標註持久化（P7-25）────────────────────────────
+function loadAnnotations(code) {
+  try { return JSON.parse(localStorage.getItem(annotationStorageKey(code))) || []; } catch { return []; }
+}
+function saveAnnotations(code, list) {
+  try { localStorage.setItem(annotationStorageKey(code), JSON.stringify(list)); } catch {}
+}
+
 const MA_DEFS = [
   { key: 'ma5',   period: 5,   label: 'MA5',   color: '#e2e8f0' },
   { key: 'ma10',  period: 10,  label: 'MA10',  color: '#facc15' },
@@ -121,6 +132,11 @@ export default function StockChart({ stock, onClose }) {
   const [aiLoading, setAiLoading]     = useState(false);
   const [aiText, setAiText]           = useState('');
   const aiAbortRef = useRef(null);
+
+  // ── K 線標註（趨勢線 / 水平線，P7-25）────────────────
+  const [annotations, setAnnotations] = useState([]);
+  const [drawMode, setDrawMode] = useState(null); // null | 'horizontal' | 'trendline'
+  const [pendingPoint, setPendingPoint] = useState(null); // 趨勢線第一個點
 
   const { quotes } = useStockStore();
   const q = quotes[stock.code];
@@ -156,6 +172,34 @@ export default function StockChart({ stock, onClose }) {
   }, [stock.code]);
 
   useEffect(() => { loadAll(months); }, [months, loadAll]);
+
+  // ── 標註：切換股票時載入對應標註，並退出繪圖模式 ──────
+  useEffect(() => {
+    setAnnotations(loadAnnotations(stock.code));
+    setDrawMode(null);
+    setPendingPoint(null);
+  }, [stock.code]);
+
+  const handleAddAnnotation = useCallback((ann) => {
+    setAnnotations(prev => {
+      const next = addAnnotation(prev, ann);
+      saveAnnotations(stock.code, next);
+      return next;
+    });
+  }, [stock.code]);
+
+  const handleRemoveAnnotation = useCallback((id) => {
+    setAnnotations(prev => {
+      const next = removeAnnotation(prev, id);
+      saveAnnotations(stock.code, next);
+      return next;
+    });
+  }, [stock.code]);
+
+  const handleClearAnnotations = useCallback(() => {
+    setAnnotations([]);
+    saveAnnotations(stock.code, []);
+  }, [stock.code]);
 
   // ── 主 K 線圖 ─────────────────────────────────────
   useEffect(() => {
@@ -218,13 +262,51 @@ export default function StockChart({ stock, onClose }) {
       lowerS.setData(bb.map(x => ({ time: x.time, value: x.lower })));
     }
 
+    // 標註：水平線 / 趨勢線（P7-25）
+    annotations.forEach(ann => {
+      if (ann.type === 'horizontal' && ann.points[0]) {
+        cs.createPriceLine({ price: ann.points[0].price, color: ann.color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
+      } else if (ann.type === 'trendline' && ann.points.length === 2) {
+        const s = chart.addSeries(LineSeries, { color: ann.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        s.setData(ann.points.map(p => ({ time: p.time, value: p.price })));
+      }
+    });
+
     chart.timeScale().fitContent();
     mainChartRef.current = chart;
+
+    // 繪圖模式：點擊圖表新增標註
+    if (drawMode) {
+      mainRef.current.style.cursor = 'crosshair';
+      const handleChartClick = (param) => {
+        if (!param.point || param.time == null) return;
+        const price = cs.coordinateToPrice(param.point.y);
+        if (price == null) return;
+        const point = { time: param.time, price: +price.toFixed(2) };
+        if (drawMode === 'horizontal') {
+          handleAddAnnotation(createAnnotation('horizontal', [point]));
+          setDrawMode(null);
+        } else if (drawMode === 'trendline') {
+          if (!pendingPoint) {
+            setPendingPoint(point);
+          } else {
+            const p1 = pendingPoint;
+            setPendingPoint(null);
+            const points = p1.time <= point.time ? [p1, point] : [point, p1];
+            handleAddAnnotation(createAnnotation('trendline', points));
+            setDrawMode(null);
+          }
+        }
+      };
+      chart.subscribeClick(handleChartClick);
+    } else {
+      mainRef.current.style.cursor = 'default';
+    }
 
     const ro = new ResizeObserver(() => mainChartRef.current?.applyOptions({ width: mainRef.current?.clientWidth }));
     ro.observe(mainRef.current);
     return () => { ro.disconnect(); mainChartRef.current?.remove(); mainChartRef.current = null; };
-  }, [displayCandles, showMA, showBB, indicator, mainTab]);
+  }, [displayCandles, showMA, showBB, indicator, mainTab, annotations, drawMode, pendingPoint, handleAddAnnotation]);
 
   // ── 副圖（KD / RSI / MACD）────────────────────────
   useEffect(() => {
@@ -429,6 +511,34 @@ export default function StockChart({ stock, onClose }) {
               </button>
               <div style={{ width: 1, height: 14, background: '#1e2d40', margin: '0 2px' }} />
               <button
+                onClick={() => { setDrawMode(m => m === 'horizontal' ? null : 'horizontal'); setPendingPoint(null); }}
+                title="繪製水平線（支撐/壓力位）"
+                style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                  border: `1px solid ${drawMode === 'horizontal' ? '#facc15' : '#1e2d40'}`,
+                  background: drawMode === 'horizontal' ? 'rgba(250,204,21,.15)' : 'transparent',
+                  color: drawMode === 'horizontal' ? '#facc15' : '#475569',
+                  cursor: 'pointer' }}>
+                － 水平線
+              </button>
+              <button
+                onClick={() => { setDrawMode(m => m === 'trendline' ? null : 'trendline'); setPendingPoint(null); }}
+                title="繪製趨勢線（點兩個點）"
+                style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                  border: `1px solid ${drawMode === 'trendline' ? '#facc15' : '#1e2d40'}`,
+                  background: drawMode === 'trendline' ? 'rgba(250,204,21,.15)' : 'transparent',
+                  color: drawMode === 'trendline' ? '#facc15' : '#475569',
+                  cursor: 'pointer' }}>
+                ／ 趨勢線
+              </button>
+              {annotations.length > 0 && (
+                <button onClick={handleClearAnnotations} title="清除全部標註"
+                  style={{ padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 700,
+                    border: '1px solid #1e2d40', background: 'transparent', color: '#475569', cursor: 'pointer' }}>
+                  清除標註 ({annotations.length})
+                </button>
+              )}
+              <div style={{ width: 1, height: 14, background: '#1e2d40', margin: '0 2px' }} />
+              <button
                 onClick={showAIPanel ? () => setShowAIPanel(false) : runAIPattern}
                 disabled={aiLoading}
                 style={{ padding: '2px 9px', borderRadius: 3, fontSize: 10, fontWeight: 700,
@@ -517,7 +627,33 @@ export default function StockChart({ stock, onClose }) {
           {mainTab === 'K線' && (
             <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
               {/* 圖表區 — 右側留出面板寬度 */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, marginRight: showAIPanel ? 300 : 0, transition: 'margin-right .25s ease' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, marginRight: showAIPanel ? 300 : 0, transition: 'margin-right .25s ease', position: 'relative' }}>
+                {drawMode && (
+                  <div style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', zIndex: 3, fontSize: 10, fontWeight: 700, color: '#facc15', background: 'rgba(15,25,35,.9)', border: '1px solid #facc15', borderRadius: 4, padding: '3px 10px', pointerEvents: 'none' }}>
+                    {drawMode === 'horizontal'
+                      ? '點擊圖表標記水平線位置'
+                      : pendingPoint
+                        ? '點擊第二個點完成趨勢線'
+                        : '點擊第一個點開始繪製趨勢線'}
+                  </div>
+                )}
+                {annotations.length > 0 && (
+                  <div style={{ position: 'absolute', top: 6, right: 8, zIndex: 3, display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
+                    {annotations.map(ann => (
+                      <div key={ann.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: ann.color, background: 'rgba(15,25,35,.85)', border: `1px solid ${ann.color}`, borderRadius: 4, padding: '2px 6px' }}>
+                        <span>
+                          {ann.type === 'horizontal'
+                            ? `水平線 ${ann.points[0].price}`
+                            : `趨勢線 ${ann.points[0].price} → ${ann.points[1].price}`}
+                        </span>
+                        <button onClick={() => handleRemoveAnnotation(ann.id)} title="刪除此標註"
+                          style={{ border: 'none', background: 'transparent', color: ann.color, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: 0 }}>
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div ref={mainRef} style={{ flex: 1 }} />
                 {indicator !== 'OFF' && (
                   <>
