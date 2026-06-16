@@ -473,7 +473,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 28. 瀏覽器推播通知（Web Push） `[ ]`
+#### 28. 瀏覽器推播通知（Web Push） `[x]`
 
 **背景**：警報系統（P5-18）目前僅支援 LINE Notify，使用者需切換 App 才能看到。瀏覽器原生通知可即時提醒、不需額外設定 token，適合常駐瀏覽器盤中監控的使用情境。
 
@@ -482,6 +482,12 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 警報觸發時（價格到價、停損、突破、買賣訊號），除既有 LINE 推播外，同步呼叫 `new Notification(...)` 顯示前景通知
 - 通知內容：股票名稱 + 代號、觸發條件描述、現價
 - 第一階段僅支援頁面開啟時的前景通知；背景通知（需 Service Worker + PWA）標註為後續延伸項目，本項不強制實作
+
+**已實作**：
+- 純函式 `formatNotification(event)` 抽至 `frontend/src/utils/browserNotify.js`（含 `fireBrowserNotifications`），含 9 個測試
+- `useWebSocket.js` 在 `alerts_triggered` 觸發時，若 `settings.browserNotifEnabled` 為 true 且 `Notification.permission === 'granted'`，呼叫 `new Notification(title, { body, icon })` 逐筆顯示
+- `Settings.jsx` 新增「瀏覽器推播通知」卡片，含 permission 狀態感知：未授權 → 開關自動呼叫 `requestPermission()`；已封鎖 → 顯示引導訊息；不支援 → 置灰
+- 背景通知（Service Worker / PWA）留至後續延伸
 
 ---
 

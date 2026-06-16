@@ -201,8 +201,10 @@ export const useStockStore = create((set, get) => ({
     notifySell:      true,
     notifyMarket:    true,
     // P0-3: 部位規模計算
-    totalCapital:    0,    // 總資金（元），0 = 未設定
-    maxRiskPct:      2,    // 單筆最大風險比例（%）
+    totalCapital:       0,     // 總資金（元），0 = 未設定
+    maxRiskPct:         2,     // 單筆最大風險比例（%）
+    // P7-28: 瀏覽器推播
+    browserNotifEnabled: false,
   }),
 
   updateSettings: (patch) => set((s) => {
