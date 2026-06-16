@@ -25,6 +25,69 @@ const sel = {
   color: 'var(--color-text-primary)',
 };
 
+function BrowserNotifToggle({ settings, updateSettings }) {
+  const [permStatus, setPermStatus] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+  );
+
+  const handleToggle = async (enabled) => {
+    if (!enabled) {
+      updateSettings({ browserNotifEnabled: false });
+      return;
+    }
+    if (permStatus === 'denied') return;
+    if (permStatus === 'granted') {
+      updateSettings({ browserNotifEnabled: true });
+      return;
+    }
+    const result = await Notification.requestPermission();
+    setPermStatus(result);
+    if (result === 'granted') updateSettings({ browserNotifEnabled: true });
+  };
+
+  const notSupported = permStatus === 'unsupported';
+  const denied = permStatus === 'denied';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>
+            {notSupported ? '（此瀏覽器不支援通知 API）' : '開啟桌面通知'}
+          </div>
+          {denied && (
+            <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>
+              瀏覽器已封鎖通知權限，請至瀏覽器設定手動開放後再試
+            </div>
+          )}
+        </div>
+        <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: notSupported || denied ? 'not-allowed' : 'pointer', opacity: notSupported || denied ? .4 : 1 }}>
+          <input type="checkbox" checked={settings.browserNotifEnabled && !notSupported && !denied}
+            disabled={notSupported || denied}
+            onChange={e => handleToggle(e.target.checked)}
+            style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: settings.browserNotifEnabled && !denied ? 'var(--color-brand)' : 'var(--color-background-tertiary)',
+            borderRadius: 10, transition: 'background .2s',
+            border: '1px solid var(--color-border-secondary)',
+          }} />
+          <div style={{
+            position: 'absolute', top: 2,
+            left: settings.browserNotifEnabled && !denied ? 18 : 2,
+            width: 14, height: 14,
+            background: '#fff', borderRadius: '50%',
+            transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+          }} />
+        </label>
+      </div>
+      {permStatus === 'granted' && settings.browserNotifEnabled && (
+        <div style={{ fontSize: 11, color: '#00c48c' }}>✅ 通知權限已取得，警報觸發時將顯示桌面通知</div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { settings, updateSettings, wsStatus, lastUpdated, alerts } = useStockStore();
 
@@ -242,6 +305,15 @@ export default function Settings() {
             {lineMsg && <div style={{ width: '100%', fontSize: 11, color: '#ef4444' }}>{lineMsg}</div>}
           </div>
         )}
+      </div>
+
+      {/* 瀏覽器推播通知 */}
+      <div style={{ gridColumn: '1 / -1', background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+        <div className="section-label">瀏覽器推播通知</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 12, lineHeight: 1.7 }}>
+          警報觸發時直接在桌面顯示通知，不需切換至 LINE。僅在頁面開啟時有效（前景通知）。
+        </div>
+        <BrowserNotifToggle settings={settings} updateSettings={updateSettings} />
       </div>
 
       {/* 自動 AI 簡報排程 */}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useStockStore } from '../stores/stockStore';
+import { fireBrowserNotifications } from '../utils/browserNotify';
 
 const WS_URL = import.meta.env.VITE_WS_URL
   ? `${import.meta.env.VITE_WS_URL}/ws`
@@ -9,7 +10,7 @@ export function useWebSocket() {
   const ws             = useRef(null);
   const reconnectTimer = useRef(null);
   const reconnectCount = useRef(0);
-  const { setTaiex, setQuotes, addTriggeredAlerts, setWsStatus, watchlist } = useStockStore();
+  const { setTaiex, setQuotes, addTriggeredAlerts, setWsStatus, watchlist, settings } = useStockStore();
 
   // ── 訂閱自選股代號 ────────────────────────────────────
   const subscribeWatchlist = useCallback((socket) => {
@@ -39,7 +40,10 @@ export function useWebSocket() {
         switch (type) {
           case 'taiex':            setTaiex(payload);            break;
           case 'quotes':           setQuotes(payload);           break;
-          case 'alerts_triggered': addTriggeredAlerts(payload);  break;
+          case 'alerts_triggered':
+            addTriggeredAlerts(payload);
+            if (settings.browserNotifEnabled) fireBrowserNotifications(payload);
+            break;
         }
       } catch {/* ignore */}
     };
