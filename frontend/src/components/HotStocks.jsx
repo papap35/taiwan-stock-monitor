@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import { api } from '../services/api';
 import StockChart from './StockChart';
+import { INDUSTRY_GROUPS } from '../utils/industryGroups';
 
 const FILTERS = [
   { value: 'vol',    label: '成交量排行', short: '成交量' },
@@ -24,6 +25,7 @@ export function HotStocks() {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
   const [chartStock, setChartStock] = useState(null);
+  const [groupFilter, setGroupFilter] = useState('');
 
   const load = useCallback(async (filter) => {
     setLoading(true);
@@ -45,11 +47,17 @@ export function HotStocks() {
     }
   };
 
-  const displayed = [...hotStocks].sort((a, b) => {
-    if (!sortKey) return 0;
-    const va = a[sortKey] ?? 0, vb = b[sortKey] ?? 0;
-    return sortDir === 'desc' ? vb - va : va - vb;
-  });
+  const groupCodes = groupFilter
+    ? new Set(INDUSTRY_GROUPS.find(g => g.label === groupFilter)?.codes ?? [])
+    : null;
+
+  const displayed = [...hotStocks]
+    .filter(s => !groupCodes || groupCodes.has(s.code))
+    .sort((a, b) => {
+      if (!sortKey) return 0;
+      const va = a[sortKey] ?? 0, vb = b[sortKey] ?? 0;
+      return sortDir === 'desc' ? vb - va : va - vb;
+    });
 
   const SortIcon = ({ k }) => {
     if (sortKey !== k) return <span style={{ opacity: .3, fontSize: 9 }}>⇅</span>;
@@ -87,7 +95,19 @@ export function HotStocks() {
             {f.short}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
+        <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)}
+          style={{
+            padding: '4px 8px', fontSize: 11,
+            background: groupFilter ? 'rgba(59,130,246,.1)' : 'var(--color-background-secondary)',
+            border: `1px solid ${groupFilter ? 'var(--color-brand)' : 'var(--color-border-secondary)'}`,
+            borderRadius: 4, color: groupFilter ? 'var(--color-brand)' : 'var(--color-text-secondary)',
+            cursor: 'pointer',
+          }}>
+          <option value="">全部族群</option>
+          {INDUSTRY_GROUPS.map(g => (
+            <option key={g.label} value={g.label}>{g.label}</option>
+          ))}
+        </select>
         <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', alignSelf: 'center' }}>
           {displayed.length} 檔
         </span>

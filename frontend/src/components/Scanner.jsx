@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { api } from '../services/api';
 import { useStockStore } from '../stores/stockStore';
 import { SCAN_CONDITIONS, checkConditions, filterPassed, BACKTESTABLE_CONDITIONS, runBacktest } from '../utils/scanner';
+import { INDUSTRY_GROUPS } from '../utils/industryGroups';
 
 const GROUP_ORDER = ['技術面', '籌碼面', '基本面', '量能'];
 
@@ -22,6 +23,7 @@ export default function Scanner() {
   const { addToWatchlist, watchlist } = useStockStore();
 
   const [inputText, setInputText]   = useState('');
+  const [groupPick, setGroupPick]   = useState('');
   const [selected, setSelected]     = useState(new Set());
   const [scanning, setScanning]     = useState(false);
   const [progress, setProgress]     = useState({ done: 0, total: 0 });
@@ -191,6 +193,40 @@ export default function Scanner() {
             <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-tertiary)', letterSpacing: '.07em', marginBottom: 8 }}>
               掃描代號清單（空格/逗號/換行分隔）
             </div>
+
+            {/* 族群快速代入 */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', flexShrink: 0 }}>快速代入族群：</span>
+              <select value={groupPick} onChange={e => setGroupPick(e.target.value)}
+                style={{
+                  flex: 1, minWidth: 160, padding: '4px 8px', fontSize: 11,
+                  background: 'var(--color-background-secondary)',
+                  border: '1px solid var(--color-border-tertiary)',
+                  borderRadius: 4, color: 'var(--color-text-primary)', cursor: 'pointer',
+                }}>
+                <option value="">-- 選擇族群 --</option>
+                {INDUSTRY_GROUPS.map(g => (
+                  <option key={g.label} value={g.label}>{g.label}（{g.codes.length} 檔）</option>
+                ))}
+              </select>
+              {groupPick && (() => {
+                const codes = INDUSTRY_GROUPS.find(g => g.label === groupPick)?.codes ?? [];
+                const codesStr = codes.join(' ');
+                return (
+                  <>
+                    <button onClick={() => setInputText(codesStr)}
+                      style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid var(--color-brand)', background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)' }}>
+                      取代輸入
+                    </button>
+                    <button onClick={() => setInputText(prev => (prev.trim() ? prev.trim() + ' ' : '') + codesStr)}
+                      style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid var(--color-border-tertiary)', background: 'transparent', color: 'var(--color-text-secondary)' }}>
+                      合併輸入
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
+
             <textarea
               value={inputText}
               onChange={e => setInputText(e.target.value)}
