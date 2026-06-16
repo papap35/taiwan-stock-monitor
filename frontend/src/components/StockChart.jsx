@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { api } from '../services/api';
 import { useStockStore } from '../stores/stockStore';
 import {
@@ -133,6 +133,9 @@ export default function StockChart({ stock, onClose }) {
   const [aiText, setAiText]           = useState('');
   const aiAbortRef = useRef(null);
 
+  // ── 重要事件公告（P7-27）──────────────────────────────
+  const [announcements, setAnnouncements] = useState([]);
+
   // ── K 線標註（趨勢線 / 水平線，P7-25）────────────────
   const [annotations, setAnnotations] = useState([]);
   const [drawMode, setDrawMode] = useState(null); // null | 'horizontal' | 'trendline'
@@ -156,17 +159,19 @@ export default function StockChart({ stock, onClose }) {
   const loadAll = useCallback(async (m) => {
     setLoading(true); setError('');
     try {
-      const [kRes, instRes, marginRes, valRes] = await Promise.allSettled([
+      const [kRes, instRes, marginRes, valRes, annRes] = await Promise.allSettled([
         api.getHistory(stock.code, m),
         api.getInstitutional(stock.code, m),
         api.getMargin(stock.code, m),
         api.getStockValuation(stock.code),
+        api.getAnnouncements(stock.code),
       ]);
       if (kRes.status === 'fulfilled') setCandles(kRes.value.candles || []);
       else setError(`K線資料載入失敗：${kRes.reason?.message}`);
       if (instRes.status === 'fulfilled') setInstData(instRes.value.data || []);
       if (marginRes.status === 'fulfilled') setMarginData(marginRes.value.data || []);
       if (valRes.status === 'fulfilled') setValuation(valRes.value.data || null);
+      if (annRes.status === 'fulfilled') setAnnouncements(annRes.value.events || []);
     } catch (e) { setError(e.message); }
     setLoading(false);
   }, [stock.code]);
@@ -272,6 +277,17 @@ export default function StockChart({ stock, onClose }) {
       }
     });
 
+    // 重要事件 markers（除息💰 / 除權📈 / 財報📋，P7-27）
+    const markerMap = { dividend: { shape: 'arrowUp', color: '#facc15', text: '💰' }, rights: { shape: 'arrowUp', color: '#f97316', text: '📈' }, earnings: { shape: 'circle', color: '#a78bfa', text: '📋' } };
+    const candleTimes = new Set(displayCandles.map(c => c.time));
+    const markers = announcements
+      .filter(a => { const t = Math.floor(new Date(a.date).getTime() / 1000); return candleTimes.has(t); })
+      .map(a => {
+        const m = markerMap[a.type] || { shape: 'circle', color: '#64748b', text: '●' };
+        return { time: Math.floor(new Date(a.date).getTime() / 1000), position: 'belowBar', color: m.color, shape: m.shape, text: m.text };
+      });
+    if (markers.length) createSeriesMarkers(cs, markers);
+
     chart.timeScale().fitContent();
     mainChartRef.current = chart;
 
@@ -306,7 +322,7 @@ export default function StockChart({ stock, onClose }) {
     const ro = new ResizeObserver(() => mainChartRef.current?.applyOptions({ width: mainRef.current?.clientWidth }));
     ro.observe(mainRef.current);
     return () => { ro.disconnect(); mainChartRef.current?.remove(); mainChartRef.current = null; };
-  }, [displayCandles, showMA, showBB, indicator, mainTab, annotations, drawMode, pendingPoint, handleAddAnnotation]);
+  }, [displayCandles, showMA, showBB, indicator, mainTab, annotations, announcements, drawMode, pendingPoint, handleAddAnnotation]);
 
   // ── 副圖（KD / RSI / MACD）────────────────────────
   useEffect(() => {
@@ -730,6 +746,25 @@ export default function StockChart({ stock, onClose }) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 重大事件列表（P7-27）— K線 tab 下方 */}
+          {mainTab === 'K線' && announcements.length > 0 && (
+            <div style={{ borderTop: '1px solid #1a2535', flexShrink: 0, maxHeight: 110, overflowY: 'auto', padding: '6px 12px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#475569', letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 4 }}>
+                重大事件 💰除息 📈除權 📋財報
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px' }}>
+                {[...announcements].sort((a, b) => b.date.localeCompare(a.date)).map((ev, i) => {
+                  const icon = ev.type === 'dividend' ? '💰' : ev.type === 'rights' ? '📈' : '📋';
+                  return (
+                    <span key={i} style={{ fontSize: 9, color: '#94a3b8', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                      {icon} {ev.date} {ev.note || ev.name || ''}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           )}
 
