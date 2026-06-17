@@ -38,12 +38,16 @@ export default function Portfolio() {
 
   const holdings = useMemo(() => rows.filter(r => r.totalShares > 0), [rows]);
 
+  const perfStats = useMemo(
+    () => calcPerformance(getExitedEntries(filteredWatchlist)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredWatchlist.map(w=>w.code).join(','), activePortfolioId],
+  );
+
   const realizedPnl = useMemo(() => {
-    const stats = calcPerformance(getExitedEntries(filteredWatchlist));
-    if (!stats) return 0;
-    return stats.results.reduce((s, r) => s + r.pnlAmt, 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredWatchlist.map(w=>w.code).join(','), activePortfolioId]);
+    if (!perfStats) return 0;
+    return perfStats.results.reduce((s, r) => s + r.pnlAmt, 0);
+  }, [perfStats]);
 
   const pieData = useMemo(
     () => holdings
@@ -146,6 +150,49 @@ export default function Portfolio() {
           </div>
         </div>
       </div>
+
+      {/* ── 進場理由分析 ── */}
+      {perfStats?.byEntryReason?.length > 0 && (
+        <div style={{ marginTop: 14, background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)', marginBottom: 10 }}>
+            進場理由分析（已出場 {perfStats.totalTrades} 筆）
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 70px 60px', gap: 4, fontSize: 9, color: 'var(--color-text-tertiary)', fontWeight: 700, letterSpacing: '.06em', padding: '0 4px', marginBottom: 6 }}>
+            <span>進場理由</span>
+            <span style={{ textAlign: 'right' }}>次數</span>
+            <span style={{ textAlign: 'right' }}>勝率</span>
+            <span style={{ textAlign: 'right' }}>平均報酬</span>
+            <span style={{ textAlign: 'right' }}>勝/敗</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {perfStats.byEntryReason.map(r => {
+              const rateColor = r.winRate >= 60 ? '#00c48c' : r.winRate >= 40 ? 'var(--color-text-primary)' : '#ff4d4f';
+              const retColor  = r.avgReturn > 0 ? '#ff4d4f' : r.avgReturn < 0 ? '#00c48c' : 'var(--color-text-tertiary)';
+              const barPct    = Math.min(r.winRate, 100);
+              return (
+                <div key={r.entryReason} style={{ padding: '6px 4px', borderRadius: 4, background: 'rgba(255,255,255,.015)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 70px 60px', gap: 4, fontSize: 11, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{r.label}</span>
+                    <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)' }}>{r.total}</span>
+                    <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: rateColor }}>{r.winRate}%</span>
+                    <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: retColor }}>{r.avgReturn >= 0 ? '+' : ''}{r.avgReturn}%</span>
+                    <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-text-tertiary)' }}>{r.wins}/{r.losses}</span>
+                  </div>
+                  {/* 勝率進度條 */}
+                  <div style={{ height: 3, background: 'var(--color-border-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${barPct}%`, background: rateColor, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {perfStats.byEntryReason.length < perfStats.totalTrades && (
+            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+              ※ 未分類進場理由的交易不計入此統計
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

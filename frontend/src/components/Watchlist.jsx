@@ -333,6 +333,7 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
     shares:          lot?.shares          ?? '',
     oddLotShares:    lot?.oddLotShares    ?? '',
     cost:            lot?.cost            ?? '',
+    entryReason:     lot?.entryReason     ?? '',
     note:            lot?.note            ?? '',
     trailingStopPct: lot?.trailingStopPct ?? '',
     planTarget:      lot?.planTarget      ?? '',
@@ -483,9 +484,24 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
             )}
           </div>
 
-          {/* 進場理由 */}
+          {/* 進場理由分類 */}
           <div>
-            <div style={label}>進場理由（選填）</div>
+            <div style={label}>進場理由分類（選填）</div>
+            <select style={{ ...inp, cursor: 'pointer' }} value={form.entryReason} onChange={e => f('entryReason', e.target.value)}>
+              <option value="">請選擇...</option>
+              <option value="breakout">📈 突破型（突破頸線/新高）</option>
+              <option value="pullback">🔄 回測支撐（均線/壓力轉支撐）</option>
+              <option value="institutional">🏦 法人買超（外資/投信連買）</option>
+              <option value="fundamental">📋 基本面轉機（營收/EPS 改善）</option>
+              <option value="dip">💧 逢低承接（超跌反彈）</option>
+              <option value="event">📅 事件驅動（法說/除息/產品發布）</option>
+              <option value="other">💡 其他</option>
+            </select>
+          </div>
+
+          {/* 進場備註 */}
+          <div>
+            <div style={label}>進場備註（選填）</div>
             <input style={inp} placeholder="例：逢低布局、法說前布局、突破頸線..." value={form.note} onChange={e => f('note', e.target.value)} />
           </div>
 
@@ -547,6 +563,7 @@ function LotModal({ stockName, lot, settings, onSave, onClose }) {
               shares:          parseInt(form.shares)       || 0,
               oddLotShares:    parseInt(form.oddLotShares) || 0,
               cost:            parseFloat(form.cost),
+              entryReason:     form.entryReason || null,
               note:            form.note.trim(),
               trailingStopPct: form.trailingStopPct ? parseFloat(form.trailingStopPct) : null,
               planTarget:      form.planTarget      ? parseFloat(form.planTarget)      : null,

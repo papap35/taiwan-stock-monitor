@@ -550,7 +550,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 33. AI 交易日記模式辨識 `[ ]`
+#### 33. AI 交易日記模式辨識 `[x]`
 
 **背景**：已有 AI 覆盤（P3-14）逐筆分析，但缺乏「長期模式」洞察，例如：某類進場理由（`entryReason`）的勝率是否特別高或低，長期累積後才能看出個人交易習慣的優劣。
 
@@ -558,6 +558,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 績效統計頁新增「進場理由分析」區塊，依既有 `entryReason` 欄位分組統計各類理由的次數、勝率、平均報酬（沿用 `calcPerformance`）
 - AI 週報摘要（P6-24）新增「本週模式觀察」段落：比對本週交易與歷史同類型理由的表現，給出簡短建議文字
 - 統計運算為純前端（沿用既有 `performance.js` 工具），AI 文字生成沿用既有 `claude-haiku-4-5` 架構，不新增外部依賴
+
+**已實作**：
+- Lot 新增 `entryReason` 下拉欄位（7 種分類：突破型/回測支撐/法人買超/基本面轉機/逢低承接/事件驅動/其他）
+- `calcPerformance` 新增 `byEntryReason` 統計（次數/勝率/平均報酬/勝敗數），未填理由的 Lot 不計入
+- Portfolio.jsx 新增「進場理由分析」卡片，含勝率進度條
+- `buildWeeklyPrompt` 接受 `entryReasonStats`，有資料時生成第 6 點「本週模式觀察」
+- 觸發週報時前端自動計算並傳入 `entryReasonStats`（純前端，不新增後端計算）
 
 ---
 

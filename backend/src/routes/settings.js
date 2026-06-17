@@ -73,7 +73,7 @@ router.post('/auto-report', (req, res) => {
 
 // POST /api/settings/auto-report/trigger — 立即手動觸發（測試用）
 router.post('/auto-report/trigger', async (req, res) => {
-  const { type = 'pre' } = req.body;
+  const { type = 'pre', entryReasonStats = null } = req.body;
   if (!lineNotify.hasToken()) {
     return res.status(400).json({ error: '尚未設定 LINE Notify token' });
   }
@@ -81,7 +81,7 @@ router.post('/auto-report/trigger', async (req, res) => {
     if (type === 'pre') {
       await scheduler.runPreMarketReport();
     } else if (type === 'weekly') {
-      await scheduler.runWeeklyReport();
+      await scheduler.runWeeklyReport(entryReasonStats);
     } else {
       await scheduler.runPostMarketReport();
     }
