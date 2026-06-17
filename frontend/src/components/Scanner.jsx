@@ -202,23 +202,22 @@ export default function Scanner() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* ── 頁首 ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🔎 條件選股掃描器</div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-            輸入股票代號清單，勾選篩選條件，AI 自動掃描符合的標的
-          </div>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🔎 條件選股掃描器</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+          輸入股票代號清單，勾選篩選條件，AI 自動掃描符合的標的
         </div>
-        {/* 模式切換 */}
-        <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--color-border-tertiary)', flexShrink: 0 }}>
-          {[['scan', '🔍 掃描模式'], ['compare', '⚖️ 策略比較']].map(([m, label]) => (
-            <button key={m} onClick={() => setMode(m)} style={{
-              padding: '6px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
-              background: mode === m ? 'var(--color-brand)' : 'transparent',
-              color: mode === m ? '#fff' : 'var(--color-text-tertiary)',
-            }}>{label}</button>
-          ))}
-        </div>
+      </div>
+
+      {/* ── 模式切換 ── */}
+      <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--color-border-tertiary)', alignSelf: 'flex-start' }}>
+        {[['scan', '🔍 掃描模式'], ['compare', '⚖️ 策略比較']].map(([m, label]) => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            padding: '6px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
+            background: mode === m ? 'var(--color-brand)' : 'transparent',
+            color: mode === m ? '#fff' : 'var(--color-text-tertiary)',
+          }}>{label}</button>
+        ))}
       </div>
 
       {mode === 'scan' && <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
