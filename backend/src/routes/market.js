@@ -2,6 +2,17 @@ const express = require('express');
 const router = express.Router();
 const twse = require('../services/twse');
 
+// GET /api/market/taiex/history?months=3 — 大盤加權指數歷史日收盤
+router.get('/taiex/history', async (req, res) => {
+  try {
+    const months = Math.min(parseInt(req.query.months) || 3, 12);
+    const candles = await twse.fetchTaiexHistory(months);
+    res.json({ months, candles, count: candles.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/market/taiex — 加權指數
 router.get('/taiex', async (req, res) => {
   try {
