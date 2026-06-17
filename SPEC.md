@@ -596,13 +596,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 37. 多股比較加入大盤 TAIEX `[ ]`
+#### 37. 多股比較加入大盤 TAIEX `[x]`
 
 **背景**：P7-26 多股同列比較目前僅支援自選股之間比較，無法加入大盤 TAIEX 作為對照基準。實作時發現 TWSE `STOCK_DAY` API 僅支援個股代號，無對應的加權指數歷史資料端點，需另外確認資料來源。
 
 **功能規格**：
-- 後端新增大盤指數歷史資料端點（資料來源待確認，可能為 TWSE `MI_5MINS_HIST` 或其他每日指數收盤資料 API）
-- 「股票比較」頁籤新增「加入大盤 TAIEX」勾選項，沿用既有 `normalizeSeries`/`mergeSeries` 正規化邏輯疊加顯示
+- 後端新增 `GET /api/market/taiex/history?months=N`，使用 TWSE `MI_5MINS_HIST` 取每月日收盤資料
+- 「股票比較」頁籤新增「大盤 TAIEX」勾選項（灰色虛線），不佔 MAX_COMPARE 上限，沿用 `normalizeSeries`/`mergeSeries` 正規化邏輯疊加顯示
 
 ---
 

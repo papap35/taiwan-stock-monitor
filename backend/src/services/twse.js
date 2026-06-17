@@ -825,6 +825,59 @@ async function fetchMarketMarginTrend() {
   }
 }
 
+/**
+ * 抓取大盤加權指數歷史日收盤資料（TWSE MI_5MINS_HIST，以月為單位）
+ * @param {number} months - 要抓幾個月，預設 3
+ * @returns {{time: number, close: number}[]}
+ */
+async function fetchTaiexHistory(months = 3) {
+  const cacheKey = `taiex_hist_${months}`;
+  const cached = cacheHistory.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = [];
+    const now = new Date();
+
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`;
+      const url = `https://www.twse.com.tw/indicesReport/MI_5MINS_HIST?response=json&date=${dateStr}`;
+
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+        const data = await res.json();
+
+        if (data.stat !== 'OK' || !data.data) continue;
+
+        // 欄位：日期, 開盤指數, 最高指數, 最低指數, 收盤指數
+        for (const row of data.data) {
+          const [twDate, , , , close] = row;
+          const parts = twDate.trim().split('/');
+          if (parts.length !== 3) continue;
+          const year = parseInt(parts[0]) + 1911;
+          const month = parts[1].padStart(2, '0');
+          const day = parts[2].padStart(2, '0');
+          const time = Math.floor(new Date(`${year}-${month}-${day}T00:00:00+08:00`).getTime() / 1000);
+          const c = parseFloat(String(close).replace(/,/g, '')) || 0;
+          if (!c) continue;
+          results.push({ time, close: c });
+        }
+      } catch (e) {
+        console.warn(`[TWSE] fetchTaiexHistory ${dateStr}:`, e.message);
+      }
+    }
+
+    results.sort((a, b) => a.time - b.time);
+    const unique = results.filter((r, i) => i === 0 || r.time !== results[i - 1].time);
+    cacheHistory.set(cacheKey, unique, 3600);
+    return unique;
+  } catch (err) {
+    console.error('[TWSE] fetchTaiexHistory error:', err.message);
+    return cacheHistory.get(cacheKey) || [];
+  }
+}
+
 module.exports = {
   fetchTaiex,
   fetchRealtimeQuotes,
@@ -843,6 +896,7 @@ module.exports = {
   fetchWorldMarkets,
   fetchFuturesInstitutional,
   fetchMarketMarginTrend,
+  fetchTaiexHistory,
   isTradingHours,
   POPULAR_STOCKS,
 };

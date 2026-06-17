@@ -23,10 +23,14 @@ const fmtDate = (time) => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
+const TAIEX_KEY = 'TAIEX';
+const TAIEX_COLOR = '#94a3b8';
+
 export default function StockCompare() {
   const { watchlist } = useStockStore();
   const [selected, setSelected] = useState(() => ls.get(COMPARE_STORAGE_KEY, []));
   const [period, setPeriod] = useState('3M');
+  const [includeTaiex, setIncludeTaiex] = useState(() => ls.get('compare_include_taiex', false));
   const [seriesMap, setSeriesMap] = useState({});
   const [hidden, setHidden] = useState(new Set());
   const [loading, setLoading] = useState(false);
@@ -64,26 +68,41 @@ export default function StockCompare() {
     });
   };
 
+  const toggleTaiex = () => {
+    setIncludeTaiex(prev => {
+      ls.set('compare_include_taiex', !prev);
+      return !prev;
+    });
+  };
+
   useEffect(() => {
-    if (selected.length === 0) { setSeriesMap({}); return; }
+    if (selected.length === 0 && !includeTaiex) { setSeriesMap({}); return; }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all(selected.map(code =>
-      api.getHistory(code, COMPARE_PERIODS[period])
+    const months = COMPARE_PERIODS[period];
+    const stockRequests = selected.map(code =>
+      api.getHistory(code, months)
         .then(res => [code, normalizeSeries(res.candles)])
         .catch(() => [code, []]),
-    )).then(entries => {
-      if (cancelled) return;
-      setSeriesMap(Object.fromEntries(entries));
-    }).catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    );
+    const taiexRequest = includeTaiex
+      ? api.getTaiexHistory(months)
+          .then(res => [TAIEX_KEY, normalizeSeries(res.candles)])
+          .catch(() => [TAIEX_KEY, []])
+      : null;
+    Promise.all(taiexRequest ? [...stockRequests, taiexRequest] : stockRequests)
+      .then(entries => {
+        if (cancelled) return;
+        setSeriesMap(Object.fromEntries(entries));
+      }).catch(e => { if (!cancelled) setError(e.message); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [selected, period]);
+  }, [selected, period, includeTaiex]);
 
   const chartData = useMemo(() => mergeSeries(seriesMap), [seriesMap]);
 
-  const nameOf = (code) => stocks.find(s => s.code === code)?.name || code;
+  const nameOf = (code) => code === TAIEX_KEY ? '大盤 TAIEX' : (stocks.find(s => s.code === code)?.name || code);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -99,6 +118,18 @@ export default function StockCompare() {
 
         {/* 選股區 */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 14px' }}>
+          {/* 大盤 TAIEX 勾選項 */}
+          <button onClick={toggleTaiex}
+            style={{
+              padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+              border: `1px solid ${includeTaiex ? TAIEX_COLOR : 'var(--color-border-tertiary)'}`,
+              background: includeTaiex ? 'rgba(148,163,184,.15)' : 'transparent',
+              color: includeTaiex ? TAIEX_COLOR : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+            }}>
+            大盤 TAIEX
+          </button>
+          <div style={{ width: 1, background: 'var(--color-border-tertiary)', margin: '0 2px' }} />
           {stocks.length === 0 && (
             <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>尚無自選股，請先到「自選股」頁加入股票</div>
           )}
@@ -140,7 +171,7 @@ export default function StockCompare() {
 
       {/* 圖表區 */}
       <div style={{ background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 10, height: 420 }}>
-        {selected.length === 0 ? (
+        {selected.length === 0 && !includeTaiex ? (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)', fontSize: 12 }}>
             請先勾選要比較的股票
           </div>
@@ -177,6 +208,13 @@ export default function StockCompare() {
                   activeDot={{ r: 3 }}
                 />
               ))}
+              {includeTaiex && (
+                <Line key={TAIEX_KEY} type="monotone" dataKey={TAIEX_KEY}
+                  stroke={TAIEX_COLOR} strokeWidth={1.5} strokeDasharray="4 2"
+                  dot={false} connectNulls hide={hidden.has(TAIEX_KEY)}
+                  activeDot={{ r: 3 }}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         )}

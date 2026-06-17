@@ -26,6 +26,7 @@ async function apiFetch(path, options = {}) {
 export const api = {
   // 市場
   getTaiex: () => apiFetch('/api/market/taiex'),
+  getTaiexHistory: (months = 3) => apiFetch(`/api/market/taiex/history?months=${months}`),
   getHotStocks: (filter = 'vol', limit = 30) =>
     apiFetch(`/api/market/hot?filter=${filter}&limit=${limit}`),
   getBreadth: () => apiFetch('/api/market/breadth'),
