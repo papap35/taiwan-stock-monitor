@@ -771,9 +771,9 @@ describe('calcExitedLot', () => {
 });
 
 describe('calcPerformance', () => {
-  const makeEntry = (pnlSign, code = '2330', strategy = 'swing', exitDate = '2024-06-01') => {
+  const makeEntry = (pnlSign, code = '2330', strategy = 'swing', exitDate = '2024-06-01', entryReason = null) => {
     const exitPrice = pnlSign > 0 ? 110 : 90;
-    return { code, name: '台積電', strategy, lot: { date: '2024-01-01', exitDate, exitPrice, cost: 100, shares: 1, oddLotShares: 0 } };
+    return { code, name: '台積電', strategy, lot: { date: '2024-01-01', exitDate, exitPrice, cost: 100, shares: 1, oddLotShares: 0, entryReason } };
   };
 
   it('空陣列 → 回傳 null', () => {
@@ -825,5 +825,39 @@ describe('calcPerformance', () => {
     const entries = [makeEntry(0)]; // 用 pnlSign=0 → exitPrice=90 → 虧損
     const r = calcPerformance(entries);
     expect(r.winCount).toBe(0);
+  });
+
+  it('byEntryReason：無進場理由的交易不計入', () => {
+    const entries = [makeEntry(1), makeEntry(-1)]; // entryReason = null
+    const r = calcPerformance(entries);
+    expect(r.byEntryReason).toEqual([]);
+  });
+
+  it('byEntryReason：依進場理由分組計算勝率與平均報酬', () => {
+    const entries = [
+      makeEntry(1,  '2330', 'swing', '2024-06-01', 'breakout'),
+      makeEntry(1,  '2317', 'swing', '2024-06-01', 'breakout'),
+      makeEntry(-1, '2454', 'swing', '2024-06-01', 'breakout'),
+      makeEntry(-1, '2382', 'swing', '2024-06-01', 'dip'),
+    ];
+    const r = calcPerformance(entries);
+    const bo = r.byEntryReason.find(x => x.entryReason === 'breakout');
+    const dip = r.byEntryReason.find(x => x.entryReason === 'dip');
+    expect(bo.total).toBe(3);
+    expect(bo.wins).toBe(2);
+    expect(bo.winRate).toBe(66.7);
+    expect(bo.label).toBe('突破型');
+    expect(dip.total).toBe(1);
+    expect(dip.winRate).toBe(0);
+  });
+
+  it('byEntryReason：依 total 筆數由多到少排序', () => {
+    const entries = [
+      makeEntry(1, '2330', 'swing', '2024-06-01', 'dip'),
+      makeEntry(1, '2317', 'swing', '2024-06-01', 'breakout'),
+      makeEntry(1, '2454', 'swing', '2024-06-01', 'breakout'),
+    ];
+    const r = calcPerformance(entries);
+    expect(r.byEntryReason[0].entryReason).toBe('breakout');
   });
 });

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useStockStore } from '../stores/stockStore';
 import DataManager from './DataManager';
 import { api } from '../services/api';
 import { useCloudSync } from '../hooks/useCloudSync';
+import { calcPerformance, getExitedEntries } from '../utils/portfolio';
 
 const Row = ({ label, desc, children }) => (
   <div style={{
@@ -142,10 +143,17 @@ export default function Settings() {
     authEnabled, user, signInWithGoogle, signOut,
   } = useCloudSync();
 
+  const { watchlist } = useStockStore();
+  const entryReasonStats = useMemo(() => {
+    const stats = calcPerformance(getExitedEntries(watchlist));
+    return stats?.byEntryReason?.length ? stats.byEntryReason : null;
+  }, [watchlist]);
+
   const handleTriggerReport = async (type) => {
     const LABELS = { pre: '盤前', post: '盤後', weekly: '週報' };
     try {
-      await api.triggerAutoReport(type);
+      const extra = type === 'weekly' && entryReasonStats ? { entryReasonStats } : {};
+      await api.triggerAutoReport(type, extra);
       alert(`${LABELS[type] || ''}簡報已觸發，請查看 LINE！`);
     } catch (e) {
       alert('觸發失敗：' + e.message);

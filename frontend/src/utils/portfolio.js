@@ -477,7 +477,7 @@ export function calcPerformance(exitedEntries) {
     .map(({ lot, code, name, strategy }) => {
       const r = calcExitedLot(lot);
       if (!r) return null;
-      return { ...r, code, name, strategy, exitDate: lot.exitDate || lot.date };
+      return { ...r, code, name, strategy, entryReason: lot.entryReason || null, exitDate: lot.exitDate || lot.date };
     })
     .filter(Boolean);
 
@@ -539,6 +539,34 @@ export function calcPerformance(exitedEntries) {
   const strategyWinRate = Object.values(byStrategy)
     .map(s => ({ ...s, winRate: +(s.wins / s.total * 100).toFixed(0) }));
 
+  // 進場理由勝率
+  const ENTRY_REASON_LABELS = {
+    breakout:      '突破型',
+    pullback:      '回測支撐',
+    institutional: '法人買超',
+    fundamental:   '基本面轉機',
+    dip:           '逢低承接',
+    event:         '事件驅動',
+    other:         '其他',
+  };
+  const byEntryReasonMap = {};
+  for (const r of results) {
+    const key = r.entryReason || null;
+    if (!key) continue;
+    if (!byEntryReasonMap[key]) byEntryReasonMap[key] = { entryReason: key, label: ENTRY_REASON_LABELS[key] || key, wins: 0, losses: 0, total: 0, sumPct: 0 };
+    byEntryReasonMap[key].total++;
+    byEntryReasonMap[key].sumPct += r.pnlPct;
+    if (r.pnlPct > 0) byEntryReasonMap[key].wins++;
+    else byEntryReasonMap[key].losses++;
+  }
+  const byEntryReason = Object.values(byEntryReasonMap)
+    .map(s => ({
+      ...s,
+      winRate:   +(s.wins / s.total * 100).toFixed(1),
+      avgReturn: +(s.sumPct / s.total).toFixed(2),
+    }))
+    .sort((a, b) => b.total - a.total);
+
   // 資金曲線（累積損益金額）
   let cumulative = 0;
   const equityCurve = results.map(r => {
@@ -551,7 +579,7 @@ export function calcPerformance(exitedEntries) {
     avgWin, avgLoss, profitFactor, expectancy,
     maxWinStreak, maxLossStreak,
     maxWinTrade, maxLossTrade,
-    monthly, stockWinRate, strategyWinRate, equityCurve,
+    monthly, stockWinRate, strategyWinRate, byEntryReason, equityCurve,
     results,
   };
 }

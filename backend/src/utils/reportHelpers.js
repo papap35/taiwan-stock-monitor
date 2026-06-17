@@ -102,7 +102,7 @@ ${market || '（無市場資料）'}
  * @returns {string}
  */
 function buildWeeklyPrompt(ctx = {}) {
-  const { taiex, breadth, institutional, watchlistPerf, upcomingEvents } = ctx;
+  const { taiex, breadth, institutional, watchlistPerf, upcomingEvents, entryReasonStats } = ctx;
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
 
   let market = '';
@@ -136,11 +136,24 @@ function buildWeeklyPrompt(ctx = {}) {
     events = `\n【下週關注事件】\n${lines.join('\n')}`;
   }
 
+  let patternCtx = '';
+  if (entryReasonStats && entryReasonStats.length) {
+    const lines = entryReasonStats.map(r =>
+      `${r.label}：${r.total} 筆，勝率 ${r.winRate}%，平均報酬 ${r.avgReturn >= 0 ? '+' : ''}${r.avgReturn}%`
+    );
+    patternCtx = `\n【歷史進場理由統計（已出場交易）】\n${lines.join('\n')}`;
+  }
+
+  const patternSection = patternCtx
+    ? `6. 本週模式觀察：對照歷史進場理由統計，給出 1-2 句個人交易習慣的觀察與改善建議`
+    : '';
+
   return `現在時間：${now}（台灣），本週交易週期已結束。
 
 ${market || '（無市場資料）'}
 ${watchlist}
 ${events}
+${patternCtx}
 
 請提供本週週報摘要，包含：
 1. 本週大盤走勢總結
@@ -148,6 +161,7 @@ ${events}
 3. 三大法人籌碼變化解讀（如有資料）
 4. 技術面轉折提醒（如有明顯轉折訊號）
 5. 下週關注事件與操作建議（如有資料）
+${patternSection}
 
 格式：條列式，每點 1-3 句，最後一行給出下週整體操作基調（積極偏多/保守觀望/偏空防守）。`;
 }

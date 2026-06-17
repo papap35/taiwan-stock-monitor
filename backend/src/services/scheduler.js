@@ -144,7 +144,7 @@ async function fetchWatchlistWeeklyPerf() {
 
 // ── 週報推播 ─────────────────────────────────────────────────────
 
-async function runWeeklyReport() {
+async function runWeeklyReport(entryReasonStats = null) {
   if (!_settings.weeklyReportEnabled) return;
   if (!lineNotify.hasToken()) {
     console.log('[Scheduler] 週報跳過：未設定 LINE token');
@@ -172,7 +172,7 @@ async function runWeeklyReport() {
       console.warn('[Scheduler] 週報抓取行事曆事件失敗:', e.message);
     }
 
-    const prompt = buildWeeklyPrompt({ taiex, breadth, institutional, watchlistPerf, upcomingEvents });
+    const prompt = buildWeeklyPrompt({ taiex, breadth, institutional, watchlistPerf, upcomingEvents, entryReasonStats });
     const text   = await generateReport(prompt);
     const msg    = lineNotify.buildReportMessage('weekly', truncateForLine(text));
 

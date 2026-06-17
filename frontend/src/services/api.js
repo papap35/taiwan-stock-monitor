@@ -68,7 +68,7 @@ export const api = {
   // 自動簡報排程
   getAutoReportSettings: () => apiFetch('/api/settings/auto-report'),
   setAutoReportSettings: (settings) => apiFetch('/api/settings/auto-report', { method: 'POST', body: JSON.stringify(settings) }),
-  triggerAutoReport: (type = 'pre') => apiFetch('/api/settings/auto-report/trigger', { method: 'POST', body: JSON.stringify({ type }) }),
+  triggerAutoReport: (type = 'pre', extra = {}) => apiFetch('/api/settings/auto-report/trigger', { method: 'POST', body: JSON.stringify({ type, ...extra }) }),
 
   // 雲端同步（Supabase）
   getSyncStatus:  () => apiFetch('/api/sync/status'),
