@@ -573,7 +573,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 35. 多組合管理（Multiple Portfolios） `[ ]`
+#### 35. 多組合管理（Multiple Portfolios） `[x]`
 
 **背景**：目前自選股是單一清單，無法區分「長期存股」與「短線交易」等不同策略的資金與績效，混在一起會干擾庫存總覽與績效統計的判讀。
 

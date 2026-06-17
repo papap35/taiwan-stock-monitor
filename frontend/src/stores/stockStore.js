@@ -83,6 +83,42 @@ export const useStockStore = create((set, get) => ({
   setHotStocks: (hotStocks) => set({ hotStocks }),
   setHotFilter: (hotFilter) => set({ hotFilter }),
 
+  // ── 投資組合 ────────────────────────────────────────
+  portfolios: ls.get('portfolios', [
+    { id: 'default', name: '預設組合', order: 0, builtin: true },
+  ]),
+  activePortfolioId: ls.get('active_portfolio', 'default'),
+
+  addPortfolio: (name) => set((s) => {
+    const id = `p_${Date.now()}`;
+    const updated = [...s.portfolios, { id, name: name.trim(), order: s.portfolios.length, builtin: false }];
+    ls.set('portfolios', updated);
+    ls.set('active_portfolio', id);
+    return { portfolios: updated, activePortfolioId: id };
+  }),
+
+  renamePortfolio: (id, name) => set((s) => {
+    const updated = s.portfolios.map(p => p.id === id ? { ...p, name: name.trim() } : p);
+    ls.set('portfolios', updated);
+    return { portfolios: updated };
+  }),
+
+  deletePortfolio: (id) => set((s) => {
+    const updated = s.portfolios.filter(p => p.id !== id);
+    ls.set('portfolios', updated);
+    // 移至 default
+    const wl = s.watchlist.map(w => w.portfolioId === id ? { ...w, portfolioId: 'default' } : w);
+    ls.set('watchlist', wl);
+    const active = s.activePortfolioId === id ? 'default' : s.activePortfolioId;
+    ls.set('active_portfolio', active);
+    return { portfolios: updated, watchlist: wl, activePortfolioId: active };
+  }),
+
+  setActivePortfolio: (id) => set(() => {
+    ls.set('active_portfolio', id);
+    return { activePortfolioId: id };
+  }),
+
   // ── 自選股分群 ──────────────────────────────────────
   // 預設群組（id 固定）+ 使用者自訂群組
   groups: ls.get('wl_groups', [
@@ -115,11 +151,13 @@ export const useStockStore = create((set, get) => ({
   }),
 
   // ── 自選股 / 持股 ───────────────────────────────────
-  watchlist: ls.get('watchlist', []),
+  // 資料遷移：補上 portfolioId（向後相容）
+  watchlist: ls.get('watchlist', []).map(w => w.portfolioId ? w : { ...w, portfolioId: 'default' }),
 
   addToWatchlist: (stock) => set((s) => {
     if (s.watchlist.find(w => w.code === stock.code)) return s;
-    const updated = [...s.watchlist, { group: 'holdings', ...stock }];
+    const portfolioId = stock.portfolioId || s.activePortfolioId || 'default';
+    const updated = [...s.watchlist, { group: 'holdings', portfolioId, ...stock }];
     ls.set('watchlist', updated);
     return { watchlist: updated };
   }),
