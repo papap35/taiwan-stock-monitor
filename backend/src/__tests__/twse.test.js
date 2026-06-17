@@ -155,7 +155,7 @@ describe('fetchRealtimeQuotes', () => {
 
 // ─── fetchDailyAll ─────────────────────────────────────────────────────────
 describe('fetchDailyAll', () => {
-  it('parses STOCK_DAY_ALL format correctly', async () => {
+  it('parses STOCK_DAY_ALL format correctly（使用 Change 欄位計算昨收）', async () => {
     delete require.cache[require.resolve('../services/twse')];
     const freshTwse = require('../services/twse');
 
@@ -164,7 +164,7 @@ describe('fetchDailyAll', () => {
         Code: '2330',
         Name: '台積電',
         ClosingPrice: '950',
-        LastBestAskPrice: '940',
+        Change: '+10',   // 今漲 10 元 → 昨收 = 950 - 10 = 940
         OpeningPrice: '942',
         HighestPrice: '955',
         LowestPrice: '938',
@@ -175,11 +175,12 @@ describe('fetchDailyAll', () => {
     const result = await freshTwse.fetchDailyAll();
     assert.ok(result['2330']);
     assert.equal(result['2330'].price, 950);
-    assert.equal(result['2330'].prevClose, 940);
-    assert.equal(result['2330'].volume, 35000); // 逗號被移除
+    assert.equal(result['2330'].prevClose, 940);    // 950 - 10
+    assert.equal(result['2330'].change, 10);
+    assert.equal(result['2330'].volume, 35000);
   });
 
-  it('handles comma-formatted numbers', async () => {
+  it('handles comma-formatted numbers and negative Change', async () => {
     delete require.cache[require.resolve('../services/twse')];
     const freshTwse = require('../services/twse');
 
@@ -187,7 +188,7 @@ describe('fetchDailyAll', () => {
       {
         Code: '2330', Name: '台積電',
         ClosingPrice: '1,050',
-        LastBestAskPrice: '1,000',
+        Change: '-50',   // 今跌 50 元 → 昨收 = 1050 - (-50) = 1100
         OpeningPrice: '1,010',
         HighestPrice: '1,060',
         LowestPrice: '1,000',
@@ -197,7 +198,24 @@ describe('fetchDailyAll', () => {
 
     const result = await freshTwse.fetchDailyAll();
     assert.equal(result['2330'].price, 1050);
+    assert.equal(result['2330'].prevClose, 1100);  // 1050 - (-50)
+    assert.ok(result['2330'].changePercent < 0);   // 跌，changePercent 應為負
     assert.equal(result['2330'].volume, 100000);
+  });
+
+  it('【防迴歸】Change 欄位不存在時 changePercent 不應為全部 0（prevClose fallback）', async () => {
+    delete require.cache[require.resolve('../services/twse')];
+    const freshTwse = require('../services/twse');
+
+    mockFetch(() => makeFetchResponse([
+      { Code: '2330', Name: '台積電', ClosingPrice: '950', TradeVolume: '35,000' },
+    ]));
+
+    const result = await freshTwse.fetchDailyAll();
+    // Change 不存在時 change=0，prevClose=950，changePercent=0（平盤，不崩潰）
+    assert.equal(result['2330'].price, 950);
+    assert.equal(result['2330'].prevClose, 950);
+    assert.equal(result['2330'].changePercent, 0);
   });
 
   it('returns empty object on error', async () => {
@@ -257,13 +275,13 @@ describe('fetchMarketBreadth (盤後計算)', () => {
     delete require.cache[require.resolve('../services/twse')];
     const freshTwse = require('../services/twse');
 
-    // 模擬盤後 STOCK_DAY_ALL 資料
+    // 模擬盤後 STOCK_DAY_ALL 資料（使用 Change 欄位，昨收 = ClosingPrice - Change）
     mockFetch(() => makeFetchResponse([
-      { Code: 'A', Name: 'A', ClosingPrice: '105', LastBestAskPrice: '100', OpeningPrice: '100', HighestPrice: '106', LowestPrice: '99',  TradeVolume: '1000' }, // +5%
-      { Code: 'B', Name: 'B', ClosingPrice: '95',  LastBestAskPrice: '100', OpeningPrice: '100', HighestPrice: '101', LowestPrice: '94',  TradeVolume: '1000' }, // -5%
-      { Code: 'C', Name: 'C', ClosingPrice: '100', LastBestAskPrice: '100', OpeningPrice: '100', HighestPrice: '101', LowestPrice: '99',  TradeVolume: '500'  }, // 0%
-      { Code: 'D', Name: 'D', ClosingPrice: '110', LastBestAskPrice: '100', OpeningPrice: '101', HighestPrice: '110', LowestPrice: '100', TradeVolume: '2000' }, // +10% 漲停
-      { Code: 'E', Name: 'E', ClosingPrice: '90',  LastBestAskPrice: '100', OpeningPrice: '99',  HighestPrice: '100', LowestPrice: '90',  TradeVolume: '2000' }, // -10% 跌停
+      { Code: 'A', Name: 'A', ClosingPrice: '105', Change: '+5',  OpeningPrice: '100', HighestPrice: '106', LowestPrice: '99',  TradeVolume: '1000' }, // 昨收100 +5%
+      { Code: 'B', Name: 'B', ClosingPrice: '95',  Change: '-5',  OpeningPrice: '100', HighestPrice: '101', LowestPrice: '94',  TradeVolume: '1000' }, // 昨收100 -5%
+      { Code: 'C', Name: 'C', ClosingPrice: '100', Change: '0',   OpeningPrice: '100', HighestPrice: '101', LowestPrice: '99',  TradeVolume: '500'  }, // 昨收100 0%
+      { Code: 'D', Name: 'D', ClosingPrice: '110', Change: '+10', OpeningPrice: '101', HighestPrice: '110', LowestPrice: '100', TradeVolume: '2000' }, // 昨收100 +10% 漲停
+      { Code: 'E', Name: 'E', ClosingPrice: '90',  Change: '-10', OpeningPrice: '99',  HighestPrice: '100', LowestPrice: '90',  TradeVolume: '2000' }, // 昨收100 -10% 跌停
     ]));
 
     const result = await freshTwse.fetchMarketBreadth();

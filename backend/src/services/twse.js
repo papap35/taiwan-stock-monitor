@@ -157,18 +157,21 @@ async function fetchDailyAll() {
     const result = {};
     data.forEach(s => {
       const code = s.Code;
-      const price = parseFloat(s.ClosingPrice?.replace(/,/g, '')) || 0;
-      const prevClose = parseFloat(s.LastBestAskPrice?.replace(/,/g, '')) || price;
+      const price  = parseFloat(String(s.ClosingPrice  || '0').replace(/,/g, '')) || 0;
+      // STOCK_DAY_ALL 提供 Change（漲跌價差），用以還原昨收：prevClose = price - change
+      const change = parseFloat(String(s.Change || '0').replace(/[+,]/g, '')) || 0;
+      const prevClose = price > 0 ? +(price - change).toFixed(2) : 0;
       result[code] = {
         code,
         name: s.Name,
         price,
         prevClose,
-        open: parseFloat(s.OpeningPrice?.replace(/,/g, '')) || 0,
-        high: parseFloat(s.HighestPrice?.replace(/,/g, '')) || 0,
-        low: parseFloat(s.LowestPrice?.replace(/,/g, '')) || 0,
-        volume: parseInt(s.TradeVolume?.replace(/,/g, '')) || 0,
-        changePercent: prevClose ? +((price / prevClose - 1) * 100).toFixed(2) : 0,
+        change,
+        open:   parseFloat(String(s.OpeningPrice || '0').replace(/,/g, '')) || 0,
+        high:   parseFloat(String(s.HighestPrice || '0').replace(/,/g, '')) || 0,
+        low:    parseFloat(String(s.LowestPrice  || '0').replace(/,/g, '')) || 0,
+        volume: parseInt(String(s.TradeVolume    || '0').replace(/,/g, '')) || 0,
+        changePercent: prevClose > 0 ? +(change / prevClose * 100).toFixed(2) : 0,
       };
     });
 
