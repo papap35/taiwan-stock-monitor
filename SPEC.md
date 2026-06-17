@@ -460,7 +460,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 27. 個股新聞與重大訊息公告 `[ ]`
+#### 27. 個股新聞與重大訊息公告 `[x]`
 
 **背景**：看盤系統通常會在個股頁顯示近期相關新聞或公司重大訊息（股利公告、減資、併購、法說會），目前本專案缺少此資訊來源，使用者需另外查證。
 
@@ -470,6 +470,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 個股 K 線頁新增「重大訊息」清單區塊，顯示日期 + 標題，點擊展開完整內容
 - 若該日有公告，K 線圖對應日期標記小圖示（hover 顯示標題）
 - API 來源不穩定時需 graceful fallback（沿用 twse.js 既有錯誤處理慣例），不可造成個股頁整體載入失敗
+
+**已實作（MVP）**：
+- 調查發現 MOPS 對伺服器端請求全面封鎖（IP 封鎖 + 需瀏覽器 session），無法直接爬取，MOPS 完整公告整合延伸為 #38
+- 後端 `/api/stocks/:code/announcements` 改以現有 calendar service（`fetchAllEvents`）回傳該股票的除息/除權/財報事件，graceful fallback（例外時回傳空陣列，不影響 K 線頁載入）
+- K 線圖使用 `createSeriesMarkers`（lightweight-charts v5）在對應交易日標記 💰除息 / 📈除權 / 📋財報 圖示
+- K 線圖下方新增「重大事件」欄列，依日期降冪顯示事件類型、日期、備註
+- 延伸至 #38：串接 MOPS 重大訊息（公司合併/減資/法說會等），需解決伺服器端存取問題
 
 ---
 

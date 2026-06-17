@@ -42,7 +42,8 @@ export const api = {
   getWorldMarkets:        () => apiFetch('/api/market/world'),
   getMarketFutures:       () => apiFetch('/api/market/futures'),
   getMarketMarginTrend:   () => apiFetch('/api/market/margin-trend'),
-  getStockValuation: (code)   => apiFetch(`/api/stocks/${code}/valuation`),
+  getStockValuation:    (code) => apiFetch(`/api/stocks/${code}/valuation`),
+  getAnnouncements:     (code) => apiFetch(`/api/stocks/${code}/announcements`),
 
   // 警報
   getAlerts: () => apiFetch('/api/alerts'),

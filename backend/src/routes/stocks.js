@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const twse = require('../services/twse');
+const { fetchAllEvents } = require('../services/calendar');
 
 // GET /api/stocks/:codes — 單一或多個股票報價（逗號分隔）
 router.get('/:codes', async (req, res) => {
@@ -54,6 +55,18 @@ router.get('/:code/margin', async (req, res) => {
     res.json({ code, months, data, count: data.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stocks/:code/announcements — 個股重要事件（除息/除權/財報）
+router.get('/:code/announcements', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const all = await fetchAllEvents();
+    const events = all.filter(e => e.code === code);
+    res.json({ code, events, count: events.length });
+  } catch (err) {
+    res.json({ code: req.params.code, events: [], count: 0 });
   }
 });
 
