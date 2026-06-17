@@ -645,9 +645,10 @@ function StockSettingsModal({ item, groups, onSave, onClose }) {
 //  主元件
 // ─────────────────────────────────────────────────────────────
 export default function Watchlist() {
-  const { watchlist, quotes, peakPrices, settings, groups,
+  const { watchlist, quotes, peakPrices, settings, groups, portfolios, activePortfolioId,
     addToWatchlist, removeFromWatchlist, updateWatchlistItem, addLot, updateLot, removeLot,
     addGroup, renameGroup, deleteGroup,
+    addPortfolio, renamePortfolio, deletePortfolio, setActivePortfolio,
   } = useStockStore();
   const [addCode, setAddCode]     = useState('');
   const [addName, setAddName]     = useState('');
@@ -661,6 +662,8 @@ export default function Watchlist() {
   const [activeGroup, setActiveGroup] = useState('all');  // 'all' | groupId
   const [groupEditMode, setGroupEditMode] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [portfolioEditMode, setPortfolioEditMode] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState('');
   const [briefType, setBriefType] = useState('open');
   const [briefText, setBriefText] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
@@ -749,7 +752,7 @@ export default function Watchlist() {
       try { const q = await api.getQuotes([code]); name = q.quotes[code]?.name || code; }
       catch { name = code; }
     }
-    addToWatchlist({ code, name, strategy: 'long', lots: [] });
+    addToWatchlist({ code, name, strategy: 'long', lots: [], portfolioId: activePortfolioId });
     setAddCode(''); setAddName('');
     // 自動展開並開啟新增 lot
     setExpanded(prev => new Set([...prev, code]));
@@ -764,8 +767,9 @@ export default function Watchlist() {
     return next;
   });
 
-  // ── 整體統計 ─────────────────────────────────────
-  const portfolioRows = watchlist.map(w => {
+  // ── 整體統計（限目前組合）────────────────────────
+  const portfolioWatchlist = watchlist.filter(w => (w.portfolioId || 'default') === activePortfolioId);
+  const portfolioRows = portfolioWatchlist.map(w => {
     const price = quotes[w.code]?.price ?? 0;
     const p = calcPortfolio(w, price);
     return { ...w, ...p, price, q: quotes[w.code] };
@@ -782,10 +786,10 @@ export default function Watchlist() {
 
   // ── 每日簡報 ─────────────────────────────────────
   const generateBrief = async () => {
-    if (briefLoading || !watchlist.length) return;
+    if (briefLoading || !portfolioWatchlist.length) return;
     setBriefLoading(true); setBriefText('');
     try {
-      const holdings = watchlist.map(w => {
+      const holdings = portfolioWatchlist.map(w => {
         const lots = migrateLots(w);
         const totalShares = lots.reduce((s, l) => s + lotShares(l), 0);
         const totalCost   = lots.reduce((s, l) => s + lotCostTotal(l), 0);
@@ -873,6 +877,53 @@ export default function Watchlist() {
           onClose={() => setSettingsModal(null)}
         />
       )}
+
+      {/* ── 投資組合切換列 ──────────────────────────────── */}
+      <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-tertiary)', letterSpacing: '.06em', textTransform: 'uppercase' }}>組合</span>
+        {portfolios.map(p => {
+          const cnt = watchlist.filter(w => (w.portfolioId || 'default') === p.id).length;
+          const active = activePortfolioId === p.id;
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => { setActivePortfolio(p.id); setActiveGroup('all'); }} style={{
+                padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1px solid',
+                borderColor: active ? '#8b5cf6' : 'var(--color-border-secondary)',
+                background:  active ? 'rgba(139,92,246,.18)' : 'transparent',
+                color:       active ? '#a78bfa' : 'var(--color-text-tertiary)',
+              }}>
+                {p.name} <span style={{ fontSize: 10, opacity: .7 }}>{cnt}</span>
+              </button>
+              {portfolioEditMode && !p.builtin && (
+                <>
+                  <button title="重命名" onClick={() => { const n = prompt('新名稱', p.name); if (n?.trim()) renamePortfolio(p.id, n); }}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11, padding: '2px 4px' }}>✏️</button>
+                  <button title="刪除" onClick={() => {
+                    if (confirm(`刪除「${p.name}」？其中的股票將移至「預設組合」`)) {
+                      deletePortfolio(p.id);
+                    }
+                  }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 11, padding: '2px 4px' }}>✕</button>
+                </>
+              )}
+            </div>
+          );
+        })}
+        {portfolioEditMode ? (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <input value={newPortfolioName} onChange={e => setNewPortfolioName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && newPortfolioName.trim()) { addPortfolio(newPortfolioName); setNewPortfolioName(''); } }}
+              placeholder="組合名稱" style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 11, width: 90 }} />
+            <button onClick={() => { if (newPortfolioName.trim()) { addPortfolio(newPortfolioName); setNewPortfolioName(''); } }}
+              style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: '#8b5cf6', color: '#fff', fontSize: 11, cursor: 'pointer' }}>+</button>
+            <button onClick={() => { setPortfolioEditMode(false); setNewPortfolioName(''); }}
+              style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-tertiary)', fontSize: 11, cursor: 'pointer' }}>完成</button>
+          </div>
+        ) : (
+          <button onClick={() => setPortfolioEditMode(true)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, border: '1px dashed var(--color-border-tertiary)', background: 'transparent', color: 'var(--color-text-tertiary)', cursor: 'pointer' }}>
+            ＋ 管理組合
+          </button>
+        )}
+      </div>
 
       {/* ── 群組篩選列 ────────────────────────────────── */}
       <div style={{ marginBottom: 10 }}>

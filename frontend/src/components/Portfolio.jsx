@@ -25,20 +25,25 @@ function StatCard({ label, value, color }) {
 }
 
 export default function Portfolio() {
-  const { watchlist, quotes } = useStockStore();
+  const { watchlist, quotes, portfolios, activePortfolioId } = useStockStore();
+
+  const activePortfolio = portfolios.find(p => p.id === activePortfolioId);
+  const filteredWatchlist = watchlist.filter(w => (w.portfolioId || 'default') === activePortfolioId);
 
   const { rows, totalMkt, totalCost, totalPnlAmt, totalPnlPct } = useMemo(
-    () => calcTotalPortfolio(watchlist, quotes),
-    [watchlist, quotes]
+    () => calcTotalPortfolio(filteredWatchlist, quotes),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredWatchlist.map(w=>w.code).join(','), quotes, activePortfolioId]
   );
 
   const holdings = useMemo(() => rows.filter(r => r.totalShares > 0), [rows]);
 
   const realizedPnl = useMemo(() => {
-    const stats = calcPerformance(getExitedEntries(watchlist));
+    const stats = calcPerformance(getExitedEntries(filteredWatchlist));
     if (!stats) return 0;
     return stats.results.reduce((s, r) => s + r.pnlAmt, 0);
-  }, [watchlist]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredWatchlist.map(w=>w.code).join(','), activePortfolioId]);
 
   const pieData = useMemo(
     () => holdings
@@ -67,6 +72,13 @@ export default function Portfolio() {
 
   return (
     <div>
+      {/* ── 組合標題 ── */}
+      {portfolios.length > 1 && (
+        <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+          顯示組合：<span style={{ color: '#a78bfa', fontWeight: 600 }}>{activePortfolio?.name ?? '預設組合'}</span>
+          <span style={{ marginLeft: 8, opacity: .6 }}>（在「自選股」頁切換組合）</span>
+        </div>
+      )}
       {/* ── 統計卡片 ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
         <StatCard label="持股檔數" value={`${holdings.length} 檔`} />
