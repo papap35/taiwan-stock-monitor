@@ -180,9 +180,41 @@ cd frontend && npm run test:watch
 
 # 後端測試
 cd backend && node --test src/__tests__/*.test.js
+
+# e2e（需先啟動 backend + frontend dev server）
+cd e2e && npx playwright test
 ```
 
 **每次 commit 前，前端和後端測試都必須全數通過**（0 failed）。
+
+### 2.7 修改元件前先讀對應 e2e 測試
+
+改動 UI 元件前，先開對應的 e2e 測試確認測試依賴的 DOM 文字、role、placeholder 不受影響：
+
+| 元件 | e2e 測試檔 |
+|------|-----------|
+| Scanner.jsx | `e2e/tests/scanner.spec.js` |
+| Watchlist.jsx | `e2e/tests/watchlist.spec.js` |
+| Portfolio.jsx | `e2e/tests/portfolio.spec.js` |
+| Dashboard / App | `e2e/tests/dashboard.spec.js` |
+
+### 2.8 React hook 宣告順序（TDZ 陷阱）
+
+`useCallback` / `useMemo` 的 dependency array 裡的所有變數，**必須在該 hook 宣告之前**就已定義。`npm run build`（Rollup）不觸發 TDZ 錯誤，但 `npm run dev`（Vite dev server）會導致元件 crash。
+
+```js
+// ❌ 錯誤：parsedCodes 在 useCallback 之後才宣告
+const runCompare = useCallback(() => {
+  parsedCodes.length  // TDZ 錯誤！
+}, [parsedCodes]);
+const parsedCodes = [...];
+
+// ✅ 正確：先宣告，再寫 useCallback
+const parsedCodes = [...];
+const runCompare = useCallback(() => {
+  parsedCodes.length  // OK
+}, [parsedCodes]);
+```
 
 ---
 
@@ -395,6 +427,7 @@ feat(stockchart): 新增布林通道、成交量均線、週K/月K 聚合
 □ 前端：npm test 通過（0 failed）
 □ 後端：node --test src/__tests__/*.test.js 通過（0 failed）
 □ npm run build 無 error（warning 可接受）
+□ e2e：cd e2e && npx playwright test 通過（不可只靠 build 確認，見 2.7、2.8）
 □ 新功能有對應測試（前端 utils/ 函式 + 後端 utils/ 與 services/ 純邏輯）
 □ Route handler 內無 inline 純計算邏輯（已抽至 utils/）
 □ 新的 bug fix 有防迴歸測試
