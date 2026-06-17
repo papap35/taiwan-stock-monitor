@@ -64,6 +64,11 @@ export default function Scanner() {
     if (strategies.length > 2) setStrategies(prev => prev.filter((_, i) => i !== idx));
   };
 
+  // 解析輸入框的股票代號（支援空格、逗號、換行分隔）
+  const parsedCodes = [...new Set(
+    inputText.split(/[\s,，\n]+/).map(s => s.trim()).filter(s => /^\d{4,6}$/.test(s))
+  )];
+
   const runCompare = useCallback(async () => {
     if (parsedCodes.length === 0) return;
     const validStrategies = strategies.map(s =>
@@ -100,11 +105,6 @@ export default function Scanner() {
     setCompareResults(rows);
     setCompareRunning(false);
   }, [parsedCodes, strategies, compareHoldDays]);
-
-  // 解析輸入框的股票代號（支援空格、逗號、換行分隔）
-  const parsedCodes = [...new Set(
-    inputText.split(/[\s,，\n]+/).map(s => s.trim()).filter(s => /^\d{4,6}$/.test(s))
-  )];
 
   const toggleCondition = (id) => {
     setSelected(prev => {
