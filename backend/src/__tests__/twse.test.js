@@ -329,3 +329,63 @@ describe('fetchFuturesInstitutional', () => {
     assert.equal(result, null);
   });
 });
+
+// ─── parseRevenueRows ─────────────────────────────────────────────────────
+describe('parseRevenueRows', () => {
+  const makeHtml = (rows) => `<table>${rows.map(cells =>
+    `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
+  ).join('')}</table>`;
+
+  it('正常解析單列月營收', () => {
+    const html = makeHtml([
+      ['114', '5', '8,500,000', '8,100,000', '7,200,000', '4.94', '18.06', '38,000,000', '34,000,000', '11.76'],
+    ]);
+    const rows = twse.parseRevenueRows(html);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].year, 2025);
+    assert.equal(rows[0].month, 5);
+    assert.equal(rows[0].revenue, 8500000);
+    assert.equal(rows[0].prevYearRevenue, 7200000);
+    assert.ok(Math.abs(rows[0].yoy - 18.06) < 0.01);
+  });
+
+  it('忽略 header 列（非民國年格式）', () => {
+    const html = makeHtml([
+      ['年份', '月份', '當月營收', '上月', '去年同月', '上月%', 'YoY%', '累計', '去年累計', '累計%'],
+      ['114', '5', '8,500,000', '8,100,000', '7,200,000', '4.94', '18.06', '38,000,000', '34,000,000', '11.76'],
+    ]);
+    const rows = twse.parseRevenueRows(html);
+    assert.equal(rows.length, 1);
+  });
+
+  it('YoY 為 "-" 時回傳 null', () => {
+    const html = makeHtml([
+      ['113', '1', '5,000,000', '4,800,000', '0', '4.17', '-', '5,000,000', '4,500,000', '11.11'],
+    ]);
+    const rows = twse.parseRevenueRows(html);
+    assert.equal(rows[0].yoy, null);
+  });
+
+  it('解析多列並依年月排序（未排序輸入）', () => {
+    const html = makeHtml([
+      ['114', '2', '7,000,000', '6,900,000', '6,200,000', '1.45', '12.90', '', '', ''],
+      ['114', '1', '6,900,000', '7,100,000', '6,000,000', '-2.82', '15.00', '', '', ''],
+    ]);
+    const rows = twse.parseRevenueRows(html);
+    // 兩列都應被解析（fetchMonthlyRevenue 負責排序，parseRevenueRows 只解析）
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].month, 2); // 原始順序保留
+  });
+
+  it('空 HTML 回傳空陣列', () => {
+    assert.deepEqual(twse.parseRevenueRows(''), []);
+    assert.deepEqual(twse.parseRevenueRows('<html><body></body></html>'), []);
+  });
+
+  it('revenue 為 0 的列不加入結果', () => {
+    const html = makeHtml([
+      ['114', '3', '0', '0', '0', '0', '0', '0', '0', '0'],
+    ]);
+    assert.deepEqual(twse.parseRevenueRows(html), []);
+  });
+});

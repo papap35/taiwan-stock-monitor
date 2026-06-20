@@ -881,6 +881,96 @@ async function fetchTaiexHistory(months = 3) {
   }
 }
 
+/**
+ * 解析 MOPS t05st10_ifrs HTML，回傳月營收列表
+ * @param {string} html
+ * @returns {{ year: number, month: number, revenue: number, prevYearRevenue: number, yoy: number|null }[]}
+ */
+function parseRevenueRows(html) {
+  const rows = [];
+  // 找所有 <tr> 內含數字的列（跳過 header）
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let trMatch;
+  while ((trMatch = trRegex.exec(html)) !== null) {
+    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells = [];
+    let tdMatch;
+    while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+      cells.push(tdMatch[1].replace(/<[^>]+>/g, '').replace(/,/g, '').trim());
+    }
+    // MOPS 欄位：民國年 | 月份 | 當月營收 | 上月營收 | 去年同月 | 上月比較% | 去年同月% | 當月累計 | 去年累計 | 累計%
+    if (cells.length >= 7 && /^\d{3}$/.test(cells[0]) && /^\d{1,2}$/.test(cells[1])) {
+      const rocYear = parseInt(cells[0]);
+      const month   = parseInt(cells[1]);
+      const revenue         = parseInt(cells[2]) || 0;
+      const prevYearRevenue = parseInt(cells[4]) || 0;
+      const yoyStr = cells[6];
+      const yoy = yoyStr && yoyStr !== '-' && yoyStr !== '' ? parseFloat(yoyStr) : null;
+      if (rocYear > 0 && month >= 1 && month <= 12 && revenue > 0) {
+        rows.push({ year: rocYear + 1911, month, revenue, prevYearRevenue, yoy });
+      }
+    }
+  }
+  return rows;
+}
+
+// 月營收快取（TTL 6 小時，月初更新一次）
+const cacheRevenue = new NodeCache({ stdTTL: 21600, checkperiod: 600 });
+
+async function fetchMonthlyRevenue(code, months = 13) {
+  const cacheKey = `revenue_${code}_${months}`;
+  const cached = cacheRevenue.get(cacheKey);
+  if (cached) return cached;
+
+  const now = new Date();
+  const results = [];
+
+  // 需要涵蓋的年份：當前年與前一年（確保取到足夠月份的 YoY）
+  const rocYear = now.getFullYear() - 1911;
+  const yearsToFetch = rocYear === now.getFullYear() - 1911 ? [rocYear - 1, rocYear] : [rocYear];
+
+  for (const year of [rocYear - 1, rocYear]) {
+    try {
+      // MOPS 月營收查詢（上市公司 sii，OTC 公司 otc）
+      const url = 'https://mops.twse.com.tw/mops/web/ajax_t05st10_ifrs';
+      const body = new URLSearchParams({
+        encodeURIComponent: '1',
+        run: 'Y',
+        year: String(year),
+        co_id: code,
+        TYPEK: 'sii',
+        isnew: 'false',
+      });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': 'https://mops.twse.com.tw/mops/web/t05st10_ifrs',
+          'User-Agent': 'Mozilla/5.0',
+        },
+        body: body.toString(),
+        timeout: 10000,
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const rows = parseRevenueRows(html);
+      results.push(...rows);
+    } catch (e) {
+      console.warn(`[TWSE] fetchMonthlyRevenue ${code} ${year}:`, e.message);
+    }
+  }
+
+  // 去重、排序（舊 → 新），只保留最近 months 個月
+  const seen = new Set();
+  const unique = results
+    .filter(r => { const k = `${r.year}-${r.month}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+    .slice(-months);
+
+  if (unique.length > 0) cacheRevenue.set(cacheKey, unique);
+  return unique;
+}
+
 module.exports = {
   fetchTaiex,
   fetchRealtimeQuotes,
@@ -900,6 +990,8 @@ module.exports = {
   fetchFuturesInstitutional,
   fetchMarketMarginTrend,
   fetchTaiexHistory,
+  fetchMonthlyRevenue,
+  parseRevenueRows,
   isTradingHours,
   POPULAR_STOCKS,
 };

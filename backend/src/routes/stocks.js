@@ -70,6 +70,18 @@ router.get('/:code/announcements', async (req, res) => {
   }
 });
 
+// GET /api/stocks/:code/financials?months=13 — 個股月營收 YoY（MOPS）
+router.get('/:code/financials', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const months = Math.min(parseInt(req.query.months) || 13, 24);
+    const data = await twse.fetchMonthlyRevenue(code, months);
+    res.json({ code, months, data, count: data.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stocks/:code/history?months=3 — 個股日K歷史資料
 router.get('/:code/history', async (req, res) => {
   try {
