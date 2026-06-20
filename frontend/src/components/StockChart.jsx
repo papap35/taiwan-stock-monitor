@@ -120,6 +120,7 @@ export default function StockChart({ stock, onClose }) {
   const [instData, setInstData] = useState([]);
   const [marginData, setMarginData] = useState([]);
   const [valuation, setValuation] = useState(null);
+  const [financials, setFinancials] = useState([]);
   const [months, setMonths] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -159,12 +160,13 @@ export default function StockChart({ stock, onClose }) {
   const loadAll = useCallback(async (m) => {
     setLoading(true); setError('');
     try {
-      const [kRes, instRes, marginRes, valRes, annRes] = await Promise.allSettled([
+      const [kRes, instRes, marginRes, valRes, annRes, finRes] = await Promise.allSettled([
         api.getHistory(stock.code, m),
         api.getInstitutional(stock.code, m),
         api.getMargin(stock.code, m),
         api.getStockValuation(stock.code),
         api.getAnnouncements(stock.code),
+        api.getFinancials(stock.code, 13),
       ]);
       if (kRes.status === 'fulfilled') setCandles(kRes.value.candles || []);
       else setError(`K線資料載入失敗：${kRes.reason?.message}`);
@@ -172,6 +174,7 @@ export default function StockChart({ stock, onClose }) {
       if (marginRes.status === 'fulfilled') setMarginData(marginRes.value.data || []);
       if (valRes.status === 'fulfilled') setValuation(valRes.value.data || null);
       if (annRes.status === 'fulfilled') setAnnouncements(annRes.value.events || []);
+      if (finRes.status === 'fulfilled') setFinancials(finRes.value.data || []);
     } catch (e) { setError(e.message); }
     setLoading(false);
   }, [stock.code]);
@@ -780,7 +783,7 @@ export default function StockChart({ stock, onClose }) {
 
           {/* 基本面 Tab */}
           {mainTab === '基本面' && (
-            <FundamentalPanel valuation={valuation} price={price} loading={loading} />
+            <FundamentalPanel valuation={valuation} price={price} financials={financials} loading={loading} />
           )}
         </div>
 
@@ -911,7 +914,7 @@ function MarginPanel({ data, loading }) {
 }
 
 // ── 基本面子面板 ───────────────────────────────────────
-function FundamentalPanel({ valuation: v, price, loading }) {
+function FundamentalPanel({ valuation: v, price, financials = [], loading }) {
   if (loading) return <LoadingPlaceholder />;
   if (!v) return <EmptyPlaceholder text="無基本面資料（ETF 或新上市股票可能無資料）" />;
 
@@ -1005,6 +1008,59 @@ function FundamentalPanel({ valuation: v, price, loading }) {
           💡 本益比僅供參考，需結合產業特性、成長率（PEG）及市場環境綜合判斷
         </div>
       </div>
+
+      {/* 月營收 YoY（MOPS） */}
+      {financials.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: '#475569', marginBottom: 10 }}>
+            月營收年增率（近 {financials.length} 個月）
+          </div>
+          <RevenueYoyChart data={financials} />
+          <div style={{ fontSize: 10, color: '#334155', marginTop: 6 }}>資料來源：公開資訊觀測站 MOPS（上市公司）</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RevenueYoyChart({ data }) {
+  const maxAbs = Math.max(...data.map(r => Math.abs(r.yoy ?? 0)), 1);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      {[...data].reverse().map((r, i) => {
+        const label = `${r.year % 100}/${String(r.month).padStart(2, '0')}`;
+        const yoy = r.yoy;
+        const barPct = yoy != null ? Math.abs(yoy) / maxAbs * 100 : 0;
+        const color = yoy == null ? '#334155' : yoy > 0 ? '#ff4d4f' : '#00c48c';
+        const revStr = r.revenue >= 1e8
+          ? `${(r.revenue / 1e8).toFixed(1)}億`
+          : r.revenue >= 1e4
+          ? `${(r.revenue / 1e4).toFixed(0)}萬`
+          : String(r.revenue);
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '52px 1fr 60px', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: '#64748b', fontFamily: 'var(--font-mono)' }}>{label}</span>
+            <div style={{ height: 14, background: '#0d1520', borderRadius: 2, overflow: 'hidden', position: 'relative' }}>
+              <div style={{
+                position: 'absolute',
+                left: yoy != null && yoy < 0 ? `${50 - barPct / 2}%` : '50%',
+                width: `${barPct / 2}%`,
+                height: '100%',
+                background: color,
+                borderRadius: 2,
+                opacity: 0.85,
+              }} />
+              <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#1e2d40' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#64748b' }}>{revStr}</span>
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 600, color }}>
+                {yoy != null ? `${yoy > 0 ? '+' : ''}${yoy.toFixed(1)}%` : '—'}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

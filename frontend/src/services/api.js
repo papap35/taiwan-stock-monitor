@@ -35,6 +35,7 @@ export const api = {
   // 個股
   getQuotes: (codes) => apiFetch(`/api/stocks/${codes.join(',')}`),
   getHistory:       (code, months = 3) => apiFetch(`/api/stocks/${code}/history?months=${months}`),
+  getFinancials:    (code, months = 13) => apiFetch(`/api/stocks/${code}/financials?months=${months}`),
   getInstitutional: (code, months = 3) => apiFetch(`/api/stocks/${code}/institutional?months=${months}`),
   getMargin:        (code, months = 3) => apiFetch(`/api/stocks/${code}/margin?months=${months}`),
   getMarketInstitutional: () => apiFetch('/api/market/institutional'),

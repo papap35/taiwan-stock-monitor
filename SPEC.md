@@ -498,7 +498,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 29. 個股財報速覽 `[ ]`
+#### 29. 個股財報速覽 `[x]`
 
 **背景**：判斷個股基本面需要 EPS、營收成長率、毛利率趨勢，目前僅有本益比 / 殖利率（來自 TWSE `BWIBBU_d`），缺乏財報細項，需要的人得另外查 Goodinfo 或財報狗。
 
@@ -506,7 +506,13 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 後端新增 `/api/stocks/:code/financials`，抓取 MOPS 月營收（每月 10 日公布）
 - 個股頁新增「財報速覽」卡片：近 12 個月營收年增率（YoY）趨勢圖
 - 季 EPS / 毛利率因公開免費 API 來源不穩定（多為 XBRL 或第三方付費），先標註為「資料來源待確認」，本項第一階段僅實作月營收 YoY，待確認可用來源後再擴充
-- 快取：沿用 `cacheDaily`，財報資料變動慢可視情況拉長 TTL 至數小時
+- 快取：`cacheRevenue`（TTL 6 小時，月初更新一次）
+
+**已實作**：
+- `parseRevenueRows(html)` 純函式（6 個測試）：解析 MOPS `ajax_t05st10_ifrs` HTML 回傳的月營收表格，提取年/月/當月營收/去年同月/YoY%
+- `fetchMonthlyRevenue(code, months=13)`：POST 至 MOPS 取近兩年月營收，去重排序，TTL 6 小時快取
+- `GET /api/stocks/:code/financials?months=N`（最大 24）
+- StockChart「基本面」tab 底部新增月營收 YoY 長條圖（`RevenueYoyChart`）：中軸對齊、正漲紅負跌綠、右側顯示營收規模與 YoY%
 
 ---
 
@@ -550,7 +556,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 33. AI 交易日記模式辨識 `[ ]`
+#### 33. AI 交易日記模式辨識 `[x]`
 
 **背景**：已有 AI 覆盤（P3-14）逐筆分析，但缺乏「長期模式」洞察，例如：某類進場理由（`entryReason`）的勝率是否特別高或低，長期累積後才能看出個人交易習慣的優劣。
 
