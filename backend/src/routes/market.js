@@ -107,6 +107,16 @@ router.get('/futures', async (req, res) => {
   }
 });
 
+// GET /api/market/options — 台指選擇權 Put/Call Ratio（TAIFEX）
+router.get('/options', async (req, res) => {
+  try {
+    const data = await twse.fetchOptionsData();
+    res.json(data || { error: 'no data' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/market/margin-trend — 全市場融資融券近 20 日趨勢
 router.get('/margin-trend', async (req, res) => {
   try {

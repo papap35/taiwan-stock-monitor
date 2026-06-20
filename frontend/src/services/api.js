@@ -43,6 +43,7 @@ export const api = {
   getMarketIntraday:      () => apiFetch('/api/market/intraday'),
   getWorldMarkets:        () => apiFetch('/api/market/world'),
   getMarketFutures:       () => apiFetch('/api/market/futures'),
+  getMarketOptions:       () => apiFetch('/api/market/options'),
   getMarketMarginTrend:   () => apiFetch('/api/market/margin-trend'),
   getStockValuation:    (code) => apiFetch(`/api/stocks/${code}/valuation`),
   getAnnouncements:     (code) => apiFetch(`/api/stocks/${code}/announcements`),

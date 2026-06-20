@@ -766,6 +766,71 @@ async function fetchFuturesInstitutional() {
 }
 
 /**
+ * 解析 TAIFEX Put/Call Ratio 頁面 HTML
+ * 回傳：[{ date, putVolume, callVolume, pcVolumeRatio, putOI, callOI, pcOIRatio }]
+ * 欄位順序：日期 | 賣權量 | 買權量 | 量比 | 賣權OI | 買權OI | OI比
+ */
+function parsePCRatio(html) {
+  const rows = [];
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let trMatch;
+  while ((trMatch = trRegex.exec(html)) !== null) {
+    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells = [];
+    let tdMatch;
+    while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+      cells.push(tdMatch[1].replace(/<[^>]+>/g, '').replace(/,/g, '').trim());
+    }
+    if (cells.length >= 7 && /^\d{4}\/\d{2}\/\d{2}$/.test(cells[0])) {
+      const putVolume  = parseInt(cells[1]) || 0;
+      const callVolume = parseInt(cells[2]) || 0;
+      const putOI      = parseInt(cells[4]) || 0;
+      const callOI     = parseInt(cells[5]) || 0;
+      rows.push({
+        date:           cells[0].replace(/\//g, '-'),
+        putVolume,
+        callVolume,
+        pcVolumeRatio:  parseFloat(cells[3]) || (callVolume > 0 ? +(putVolume / callVolume).toFixed(2) : null),
+        putOI,
+        callOI,
+        pcOIRatio:      parseFloat(cells[6]) || (callOI > 0 ? +(putOI / callOI).toFixed(2) : null),
+      });
+    }
+  }
+  return rows;
+}
+
+async function fetchOptionsData() {
+  const cacheKey = 'options_pcr';
+  const cached = cacheDaily.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = 'https://www.taifex.com.tw/cht/3/pcRatio';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+      timeout: 10000,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    const rows = parsePCRatio(html);
+    if (!rows.length) throw new Error('empty pcRatio data');
+
+    // 最新 5 日，最新在前
+    const recent = rows.slice(0, 5);
+    const result = {
+      latest: recent[0],
+      history: recent,
+    };
+    cacheDaily.set(cacheKey, result, isTradingHours() ? 300 : 3600);
+    return result;
+  } catch (err) {
+    console.warn('[TAIFEX] fetchOptionsData error:', err.message);
+    return cacheDaily.get(cacheKey) || null;
+  }
+}
+
+/**
  * 抓取全市場融資融券趨勢（近 20 個交易日）
  * 資料來源：TWSE MI_MARGN（每月匯總，免費公開）
  * 回傳：[{ date, marginBal, shortBal, ratio }]  依日期升冪
@@ -988,6 +1053,8 @@ module.exports = {
   fetchMarginStock,
   fetchWorldMarkets,
   fetchFuturesInstitutional,
+  fetchOptionsData,
+  parsePCRatio,
   fetchMarketMarginTrend,
   fetchTaiexHistory,
   fetchMonthlyRevenue,

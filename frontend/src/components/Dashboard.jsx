@@ -29,6 +29,7 @@ const DEFAULT_PANELS = {
   world:         true,
   alerts:        true,
   institutional: false,
+  options:       false,
 };
 const PANEL_META = [
   { id: 'taiex',         label: '大盤指數',  icon: '📈', desc: 'TAIEX 即時指數、漲跌點數' },
@@ -40,6 +41,7 @@ const PANEL_META = [
   { id: 'world',         label: '國際市場',  icon: '🌍', desc: '美股、日股、港股、匯率、油價' },
   { id: 'alerts',        label: '警報動態',  icon: '🔔', desc: '最近觸發的警報記錄' },
   { id: 'institutional', label: '法人動向',  icon: '🏦', desc: '三大法人今日買超前5' },
+  { id: 'options',       label: '選擇權籌碼', icon: '⚖️', desc: 'Put/Call Ratio、近5日趨勢' },
 ];
 
 const REGION_FLAG = { US: '🇺🇸', JP: '🇯🇵', HK: '🇭🇰', KR: '🇰🇷', FX: '💱', CM: '🪙' };
@@ -424,6 +426,76 @@ function InstitutionalPanel({ data }) {
   );
 }
 
+function OptionsPanel({ data }) {
+  if (!data?.latest) return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', paddingTop: 20 }}>載入中...</div>;
+
+  const { latest, history } = data;
+  const pcOI  = latest.pcOIRatio;
+  const pcVol = latest.pcVolumeRatio;
+
+  const sentiment = !pcOI ? null
+    : pcOI > 1.2 ? { label: '偏空', color: '#00c48c' }
+    : pcOI < 0.8 ? { label: '偏多', color: '#ff4d4f' }
+    : { label: '中性', color: '#f59e0b' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {[
+          { label: 'P/C OI 比', value: pcOI?.toFixed(2) ?? '—', color: sentiment?.color ?? '#64748b', tip: '未平倉量比' },
+          { label: 'P/C 量比',  value: pcVol?.toFixed(2) ?? '—', color: '#94a3b8', tip: '成交量比' },
+        ].map((item, i) => (
+          <div key={i} style={{ background: '#161f2e', borderRadius: 6, padding: '10px 12px' }}>
+            <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: item.color, lineHeight: 1 }}>{item.value}</div>
+            <div style={{ fontSize: 9, color: '#334155', marginTop: 3 }}>{item.tip}</div>
+          </div>
+        ))}
+      </div>
+
+      {sentiment && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 4, background: `${sentiment.color}18`, color: sentiment.color }}>
+            {sentiment.label}
+          </div>
+          <span style={{ fontSize: 10, color: '#475569' }}>
+            {sentiment.label === '偏空' ? 'Put 堆積 > Call，市場偏向保護'
+              : sentiment.label === '偏多' ? 'Call 增倉 > Put，市場看漲'
+              : 'Put / Call 未平倉接近均衡'}
+          </span>
+        </div>
+      )}
+
+      {history?.length > 1 && (
+        <div>
+          <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>近 {history.length} 日 OI 比趨勢</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {history.map((r, i) => {
+              const ratio = r.pcOIRatio;
+              const barW = ratio != null ? Math.min(ratio / 2 * 100, 100) : 0;
+              const color = !ratio ? '#334155' : ratio > 1.2 ? '#00c48c' : ratio < 0.8 ? '#ff4d4f' : '#f59e0b';
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 40px', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: '#475569', fontFamily: 'var(--font-mono)' }}>{r.date?.slice(5)}</span>
+                  <div style={{ height: 8, background: '#0d1520', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: `${barW}%`, height: '100%', background: color, borderRadius: 2, opacity: 0.8 }} />
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-mono)', color, textAlign: 'right' }}>
+                    {ratio?.toFixed(2) ?? '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 9, color: '#334155', marginTop: 6 }}>
+            OI比 {'>'} 1.2 <span style={{ color: '#00c48c' }}>偏空</span>｜{'<'} 0.8 <span style={{ color: '#ff4d4f' }}>偏多</span>｜資料來源：期交所
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 //  主元件
 // ═══════════════════════════════════════════════════════════
@@ -434,12 +506,16 @@ export default function Dashboard() {
   const [breadth, setBreadth]       = useState(null);
   const [worldMkts, setWorldMkts]   = useState([]);
   const [instData, setInstData]     = useState(null);
+  const [optionsData, setOptionsData] = useState(null);
 
   useEffect(() => {
     api.getBreadth().then(setBreadth).catch(() => {});
     api.getWorldMarkets().then(setWorldMkts).catch(() => {});
     if (panels.institutional) {
       api.getMarketInstitutional().then(setInstData).catch(() => {});
+    }
+    if (panels.options) {
+      api.getMarketOptions().then(setOptionsData).catch(() => {});
     }
     // 盤中自動刷新：廣度 30s，國際市場 5min
     const breadthTimer  = setInterval(() => api.getBreadth().then(setBreadth).catch(() => {}), 30000);
@@ -598,6 +674,12 @@ export default function Dashboard() {
         {panels.institutional && (
           <Panel title="法人動向" icon="🏦" span={1}>
             <InstitutionalPanel data={instData} />
+          </Panel>
+        )}
+
+        {panels.options && (
+          <Panel title="選擇權籌碼" icon="⚖️" span={1}>
+            <OptionsPanel data={optionsData} />
           </Panel>
         )}
 
