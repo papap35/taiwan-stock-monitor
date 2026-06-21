@@ -516,7 +516,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 30. 大盤期貨與選擇權籌碼擴充 `[ ]`
+#### 30. 大盤期貨與選擇權籌碼擴充 `[x]`
 
 **背景**：已有外資期貨淨部位（P2-9），選擇權 Put/Call Ratio（PC Ratio）是判斷市場多空情緒的常用指標，目前缺少。
 
@@ -524,6 +524,12 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 後端新增 `/api/market/options`，抓取台指選擇權三大法人未平倉與 PC Ratio（來源：`taifex.com.tw`，需解析 HTML，沿用現有期貨籌碼解析慣例）
 - 大盤總覽頁新增「選擇權籌碼」卡片：PC Ratio 數值 + 近 5 日趨勢、三大法人選擇權多空淨額
 - 快取：`cacheDaily`（盤後更新一次即可）
+
+**已實作**：
+- `parsePCRatio(html)` 純函式（4 個測試）：解析 TAIFEX `pcRatio` HTML，提取日期/Put量/Call量/量比/Put OI/Call OI/OI比
+- `fetchOptionsData()`：GET TAIFEX pcRatio 頁，取最新 5 日資料，快取 5 分鐘（盤中）/ 1 小時（盤後）
+- `GET /api/market/options`
+- Dashboard 新增「選擇權籌碼」面板（預設關閉，可在面板設定啟用）：P/C OI 比 + P/C 量比 KPI 卡、情緒標籤（偏多/中性/偏空）、近 5 日 OI 比橫條趨勢
 
 ---
 

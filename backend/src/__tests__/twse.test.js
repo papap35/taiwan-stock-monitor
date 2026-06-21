@@ -389,3 +389,52 @@ describe('parseRevenueRows', () => {
     assert.deepEqual(twse.parseRevenueRows(html), []);
   });
 });
+
+// ─── parsePCRatio ─────────────────────────────────────────────────────────
+describe('parsePCRatio', () => {
+  function makeTable(rows) {
+    return `<table>${rows.map(cells =>
+      `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`
+    ).join('')}</table>`;
+  }
+
+  it('正常解析單列 PC Ratio', () => {
+    const html = makeTable([
+      ['2026/06/20', '150,000', '200,000', '0.75', '500,000', '600,000', '0.83'],
+    ]);
+    const rows = twse.parsePCRatio(html);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].date, '2026-06-20');
+    assert.equal(rows[0].putVolume, 150000);
+    assert.equal(rows[0].callVolume, 200000);
+    assert.ok(Math.abs(rows[0].pcVolumeRatio - 0.75) < 0.01);
+    assert.equal(rows[0].putOI, 500000);
+    assert.equal(rows[0].callOI, 600000);
+    assert.ok(Math.abs(rows[0].pcOIRatio - 0.83) < 0.01);
+  });
+
+  it('忽略 header 列（非日期格式）', () => {
+    const html = makeTable([
+      ['日期', 'Put成交量', 'Call成交量', 'PC量比', 'Put未平倉', 'Call未平倉', 'PC未平倉比'],
+      ['2026/06/20', '150,000', '200,000', '0.75', '500,000', '600,000', '0.83'],
+    ]);
+    const rows = twse.parsePCRatio(html);
+    assert.equal(rows.length, 1);
+  });
+
+  it('解析多列', () => {
+    const html = makeTable([
+      ['2026/06/20', '150,000', '200,000', '0.75', '500,000', '600,000', '0.83'],
+      ['2026/06/19', '180,000', '190,000', '0.95', '520,000', '580,000', '0.90'],
+      ['2026/06/18', '210,000', '170,000', '1.24', '560,000', '480,000', '1.17'],
+    ]);
+    const rows = twse.parsePCRatio(html);
+    assert.equal(rows.length, 3);
+    assert.equal(rows[2].date, '2026-06-18');
+  });
+
+  it('空 HTML 回傳空陣列', () => {
+    assert.deepEqual(twse.parsePCRatio(''), []);
+    assert.deepEqual(twse.parsePCRatio('<html></html>'), []);
+  });
+});
