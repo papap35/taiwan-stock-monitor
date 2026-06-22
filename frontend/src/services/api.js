@@ -72,6 +72,11 @@ export const api = {
   setAutoReportSettings: (settings) => apiFetch('/api/settings/auto-report', { method: 'POST', body: JSON.stringify(settings) }),
   triggerAutoReport: (type = 'pre', extra = {}) => apiFetch('/api/settings/auto-report/trigger', { method: 'POST', body: JSON.stringify({ type, ...extra }) }),
 
+  // 籌碼異動掃描（P7-34）
+  getChipScanSettings: () => apiFetch('/api/settings/chip-scan'),
+  setChipScanSettings: (settings) => apiFetch('/api/settings/chip-scan', { method: 'POST', body: JSON.stringify(settings) }),
+  triggerChipScan: () => apiFetch('/api/settings/chip-scan/trigger', { method: 'POST' }),
+
   // 雲端同步（Supabase）
   getSyncStatus:  () => apiFetch('/api/sync/status'),
   syncPull:       () => apiFetch('/api/sync/pull'),

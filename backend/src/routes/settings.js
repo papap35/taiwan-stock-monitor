@@ -10,8 +10,9 @@
 
 const express = require('express');
 const router  = express.Router();
-const lineNotify = require('../services/lineNotify');
-const scheduler  = require('../services/scheduler');
+const lineNotify  = require('../services/lineNotify');
+const scheduler   = require('../services/scheduler');
+const chipScanner = require('../services/chipScanner');
 
 // GET /api/settings/line-token
 router.get('/line-token', (_req, res) => {
@@ -85,6 +86,32 @@ router.post('/auto-report/trigger', async (req, res) => {
     } else {
       await scheduler.runPostMarketReport();
     }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/settings/chip-scan — 查詢籌碼異動掃描設定
+router.get('/chip-scan', (_req, res) => {
+  res.json(chipScanner.getSettings());
+});
+
+// POST /api/settings/chip-scan — 更新籌碼異動掃描設定
+// Body: { enabled, pool }
+router.post('/chip-scan', (req, res) => {
+  const { enabled, pool } = req.body;
+  const patch = {};
+  if (typeof enabled === 'boolean') patch.enabled = enabled;
+  if (Array.isArray(pool)) patch.pool = pool;
+  chipScanner.updateSettings(patch);
+  res.json({ success: true, ...chipScanner.getSettings() });
+});
+
+// POST /api/settings/chip-scan/trigger — 立即手動觸發（測試用）
+router.post('/chip-scan/trigger', async (req, res) => {
+  try {
+    await scheduler.runChipScanJob();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -137,6 +137,41 @@ export default function Settings() {
     await api.setAutoReportSettings(next).catch(() => {});
   };
 
+  // ── 籌碼異動掃描（P7-34）────────────────────────────────────────
+  const [chipScan, setChipScan] = useState({ enabled: false, pool: [] });
+  const [chipScanPoolText, setChipScanPoolText] = useState('');
+  const [chipScanMsg, setChipScanMsg] = useState('');
+
+  useEffect(() => {
+    api.getChipScanSettings().then(r => {
+      setChipScan(r);
+      setChipScanPoolText((r.pool || []).join(','));
+    }).catch(() => {});
+  }, []);
+
+  const toggleChipScan = async () => {
+    const next = { ...chipScan, enabled: !chipScan.enabled };
+    setChipScan(next);
+    await api.setChipScanSettings({ enabled: next.enabled }).catch(() => {});
+  };
+
+  const saveChipScanPool = async () => {
+    const pool = chipScanPoolText.split(',').map(c => c.trim()).filter(Boolean);
+    setChipScan(prev => ({ ...prev, pool }));
+    await api.setChipScanSettings({ pool }).catch(() => {});
+    setChipScanMsg('觀察池已儲存');
+    setTimeout(() => setChipScanMsg(''), 2000);
+  };
+
+  const handleTriggerChipScan = async () => {
+    try {
+      await api.triggerChipScan();
+      alert('籌碼異動掃描已觸發，符合條件的股票將推播至 LINE 並加入候選清單！');
+    } catch (e) {
+      alert('觸發失敗：' + e.message);
+    }
+  };
+
   // ── 雲端同步 ──────────────────────────────────────────────────
   const {
     enabled: syncEnabled, syncing, lastSyncAt, error: syncError, push: syncPush, pull: syncPull,
@@ -396,6 +431,75 @@ export default function Settings() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 籌碼異動掃描（P7-34）*/}
+      <div style={{ gridColumn: '1 / -1', background: 'var(--color-background-card)', border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: 14 }}>
+        <div className="section-label">📡 籌碼異動掃描</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 12, lineHeight: 1.7 }}>
+          每日收盤後（13:40）對觀察池執行偵測，符合「連續 3 日外資買超 + 股價創 20 日新高」者，
+          自動加入自選股「候選清單」分群（需啟用雲端同步）並透過 LINE 推播提示。
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>啟用籌碼異動掃描</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>需先設定 LINE Notify token</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {chipScan.enabled && (
+              <button
+                onClick={handleTriggerChipScan}
+                style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+                  border: '1px solid rgba(100,116,139,.4)', background: 'transparent', color: 'var(--color-text-tertiary)' }}>
+                立即觸發
+              </button>
+            )}
+            <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: 'pointer' }}>
+              <input type="checkbox" checked={chipScan.enabled}
+                onChange={toggleChipScan}
+                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: chipScan.enabled ? 'var(--color-brand)' : 'var(--color-background-tertiary)',
+                borderRadius: 10, transition: 'background .2s',
+                border: '1px solid var(--color-border-secondary)',
+              }} />
+              <div style={{
+                position: 'absolute', top: 2,
+                left: chipScan.enabled ? 18 : 2,
+                width: 14, height: 14,
+                background: '#fff', borderRadius: '50%',
+                transition: 'left .2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+              }} />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 6 }}>觀察池代號（逗號分隔，最多 50 檔）</div>
+          <textarea
+            value={chipScanPoolText}
+            onChange={e => setChipScanPoolText(e.target.value)}
+            rows={2}
+            placeholder="2330,2317,2454,2382..."
+            style={{
+              width: '100%', padding: '7px 10px', border: '1px solid var(--color-border-secondary)',
+              borderRadius: 6, background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)',
+              fontSize: 12, fontFamily: 'var(--font-mono)', resize: 'vertical',
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+            <button
+              onClick={saveChipScanPool}
+              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 4, cursor: 'pointer',
+                border: '1px solid var(--color-brand)', background: 'rgba(59,130,246,.1)', color: 'var(--color-brand)' }}>
+              儲存觀察池
+            </button>
+            {chipScanMsg && <span style={{ fontSize: 11, color: '#00c48c' }}>{chipScanMsg}</span>}
+          </div>
+        </div>
       </div>
 
       {/* 雲端同步（Supabase）*/}

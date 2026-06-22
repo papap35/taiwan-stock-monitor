@@ -586,7 +586,7 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 
 ---
 
-#### 34. 籌碼異動自動標註候選清單 `[ ]`
+#### 34. 籌碼異動自動標註候選清單 `[x]`
 
 **背景**：個股籌碼評分（P2-10）需手動查詢，若能自動篩選「連續 N 天外資買超且創新高」的股票並加入候選清單，可減少盤後人工監控的時間成本。
 
@@ -595,6 +595,15 @@ trailingStopPrice: number         // 即時計算的停損觸發價
 - 條件：連續 3 個交易日外資買超 且 股價創 20 日新高
 - 符合條件者自動加入該使用者自選股的「候選清單」分群（沿用 P6-16 分群功能），並透過 LINE 推播提示（沿用 `buildReportMessage`）
 - 「設定」頁新增「籌碼異動掃描」開關與觀察池代號清單設定欄位
+
+**已實作**：
+- `backend/src/utils/chipScan.js`：`detectChipSignal(instHistory, candles)` 純函式判斷單一股票是否符合條件，`scanWatchPool(pool, instDataByCode, candlesByCode)` 批量掃描（10 個測試）
+- `backend/src/services/chipScanner.js`：管理掃描設定（`enabled`/`pool`，記憶體儲存，預設池為 `POPULAR_STOCKS` 前 20 檔），`runChipScan(pool)` 抓取各股法人/K線資料並執行偵測
+- `lineNotify.buildChipScanMessage(candidates)`：候選股清單推播訊息（3 個測試）
+- `scheduler.runChipScanJob()`：每日 13:40（盤後總結後）執行，若 Supabase 已啟用則自動寫入候選股至 `candidates` 分群（去重），並透過 LINE 推播
+- `GET/POST /api/settings/chip-scan`、`POST /api/settings/chip-scan/trigger`
+- Settings 頁新增「📡 籌碼異動掃描」區塊：啟用開關、觀察池代號清單（逗號分隔文字框）、立即觸發按鈕
+- 候選清單分群沿用既有 `candidates`（P6-16 預設分群，無需新增）
 
 ---
 

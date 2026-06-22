@@ -80,6 +80,17 @@ function buildReportMessage(type, content) {
   return `\n${prefix} ${now}\n${'─'.repeat(20)}\n${content}`;
 }
 
+/**
+ * 籌碼異動掃描結果訊息（P7-34）
+ * @param {{ code: string, reason: string }[]} candidates
+ * @returns {string}
+ */
+function buildChipScanMessage(candidates) {
+  const now = new Date().toLocaleDateString('zh-TW');
+  const lines = candidates.map(c => `• ${c.code}：${c.reason}`).join('\n');
+  return `\n📡 籌碼異動掃描 ${now}\n${'─'.repeat(20)}\n${lines}\n\n已自動加入「候選清單」分群`;
+}
+
 // ── HTTP 呼叫 ─────────────────────────────────────────────────────
 
 /**
@@ -146,6 +157,7 @@ module.exports = {
   clearToken,
   buildAlertMessage,
   buildReportMessage,
+  buildChipScanMessage,
   sendLineNotify,
   notifyAlert,
 };
