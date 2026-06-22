@@ -14,12 +14,13 @@
  *   - reportHelpers（prompt 建構）
  */
 
-const cron       = require('node-cron');
-const Anthropic  = require('@anthropic-ai/sdk');
-const twse       = require('./twse');
-const lineNotify = require('./lineNotify');
-const supabase   = require('./supabase');
-const calendar   = require('./calendar');
+const cron        = require('node-cron');
+const Anthropic   = require('@anthropic-ai/sdk');
+const twse        = require('./twse');
+const lineNotify  = require('./lineNotify');
+const supabase    = require('./supabase');
+const calendar    = require('./calendar');
+const chipScanner = require('./chipScanner');
 const { buildPreMarketPrompt, buildPostMarketPrompt, buildWeeklyPrompt, truncateForLine } = require('../utils/reportHelpers');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -183,6 +184,52 @@ async function runWeeklyReport(entryReasonStats = null) {
   }
 }
 
+// ── 籌碼異動掃描（P7-34）─────────────────────────────────────────
+
+/**
+ * 每日收盤後對觀察池執行籌碼異動偵測，符合條件者：
+ *   1. 若 Supabase 已啟用，自動加入使用者自選股「候選清單」分群
+ *   2. 透過 LINE 推播提示
+ */
+async function runChipScanJob() {
+  const settings = chipScanner.getSettings();
+  if (!settings.enabled) return;
+  if (!lineNotify.hasToken()) {
+    console.log('[Scheduler] 籌碼異動掃描跳過：未設定 LINE token');
+    return;
+  }
+
+  console.log('[Scheduler] 開始籌碼異動掃描…');
+  try {
+    const candidates = await chipScanner.runChipScan(settings.pool);
+    if (!candidates.length) {
+      console.log('[Scheduler] 籌碼異動掃描：無符合條件股票');
+      return;
+    }
+
+    if (supabase.isEnabled()) {
+      try {
+        const watchlist = await supabase.pullWatchlist() || [];
+        const existingCodes = new Set(watchlist.map(w => w.code));
+        const newItems = candidates
+          .filter(c => !existingCodes.has(c.code))
+          .map(c => ({ code: c.code, name: c.code, group: 'candidates' }));
+        if (newItems.length) {
+          await supabase.pushWatchlist([...watchlist, ...newItems]);
+        }
+      } catch (e) {
+        console.warn('[Scheduler] 籌碼異動掃描寫入候選清單失敗:', e.message);
+      }
+    }
+
+    const msg = lineNotify.buildChipScanMessage(candidates);
+    await lineNotify.sendLineNotify(lineNotify.getToken(), msg);
+    console.log(`[Scheduler] 籌碼異動掃描完成，發現 ${candidates.length} 檔候選`);
+  } catch (err) {
+    console.error('[Scheduler] 籌碼異動掃描失敗:', err.message);
+  }
+}
+
 // ── cron 初始化 ───────────────────────────────────────────────────
 
 function initScheduler() {
@@ -201,7 +248,12 @@ function initScheduler() {
     timezone: 'Asia/Taipei',
   });
 
-  console.log('[Scheduler] 自動簡報排程已啟動（盤前 08:45 / 盤後 13:35 / 週報 週五 14:30）');
+  // 籌碼異動掃描：週一至週五 13:40（盤後總結之後）
+  cron.schedule('40 13 * * 1-5', runChipScanJob, {
+    timezone: 'Asia/Taipei',
+  });
+
+  console.log('[Scheduler] 自動簡報排程已啟動（盤前 08:45 / 盤後 13:35 / 籌碼掃描 13:40 / 週報 週五 14:30）');
 }
 
 module.exports = {
@@ -209,6 +261,7 @@ module.exports = {
   runPreMarketReport,
   runPostMarketReport,
   runWeeklyReport,
+  runChipScanJob,
   getSettings,
   updateSettings,
 };

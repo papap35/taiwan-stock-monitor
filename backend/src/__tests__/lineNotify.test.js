@@ -133,3 +133,30 @@ describe('buildReportMessage', () => {
     assert.ok(msg.includes('本週總結'));
   });
 });
+
+// ── buildChipScanMessage（P7-34）──────────────────────────────────
+
+describe('buildChipScanMessage', () => {
+  const { buildChipScanMessage } = lineNotify;
+
+  it('包含 📡 標題與候選股清單', () => {
+    const msg = buildChipScanMessage([
+      { code: '2330', reason: '連續3日外資買超 + 股價創20日新高' },
+      { code: '2454', reason: '連續4日外資買超 + 股價創20日新高' },
+    ]);
+    assert.ok(msg.includes('📡 籌碼異動掃描'));
+    assert.ok(msg.includes('2330'));
+    assert.ok(msg.includes('2454'));
+    assert.ok(msg.includes('連續3日外資買超'));
+  });
+
+  it('包含候選清單分群提示文字', () => {
+    const msg = buildChipScanMessage([{ code: '2330', reason: 'test' }]);
+    assert.ok(msg.includes('候選清單'));
+  });
+
+  it('單一候選股也能正常生成', () => {
+    const msg = buildChipScanMessage([{ code: '1101', reason: '連續3日外資買超 + 股價創20日新高' }]);
+    assert.ok(msg.includes('1101'));
+  });
+});
