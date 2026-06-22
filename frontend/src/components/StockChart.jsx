@@ -8,6 +8,7 @@ import {
 import {
   annotationStorageKey, createAnnotation, addAnnotation, removeAnnotation,
 } from '../utils/chartAnnotations';
+import { getEtfInfo } from '../utils/etfData';
 
 // ── 技術指標計算 ────────────────────────────────────────
 function calcMA(candles, period) {
@@ -783,7 +784,7 @@ export default function StockChart({ stock, onClose }) {
 
           {/* 基本面 Tab */}
           {mainTab === '基本面' && (
-            <FundamentalPanel valuation={valuation} price={price} financials={financials} loading={loading} />
+            <FundamentalPanel valuation={valuation} price={price} financials={financials} etfInfo={getEtfInfo(stock.code)} loading={loading} />
           )}
         </div>
 
@@ -914,9 +915,17 @@ function MarginPanel({ data, loading }) {
 }
 
 // ── 基本面子面板 ───────────────────────────────────────
-function FundamentalPanel({ valuation: v, price, financials = [], loading }) {
+function FundamentalPanel({ valuation: v, price, financials = [], etfInfo = null, loading }) {
   if (loading) return <LoadingPlaceholder />;
-  if (!v) return <EmptyPlaceholder text="無基本面資料（ETF 或新上市股票可能無資料）" />;
+  if (!v && !etfInfo) return <EmptyPlaceholder text="無基本面資料（ETF 或新上市股票可能無資料）" />;
+  if (!v && etfInfo) {
+    // 無本益比/殖利率資料但有 ETF 靜態資料時，仍顯示 ETF 卡片
+    return (
+      <div style={{ padding: 16, overflowY: 'auto', height: '100%' }}>
+        <EtfInfoCard etfInfo={etfInfo} />
+      </div>
+    );
+  }
 
   // 本益比合理性判斷
   const peJudge = !v.pe ? '—'
@@ -1009,6 +1018,13 @@ function FundamentalPanel({ valuation: v, price, financials = [], loading }) {
         </div>
       </div>
 
+      {/* ETF 資訊（P7-32） */}
+      {etfInfo && (
+        <div style={{ marginTop: 16 }}>
+          <EtfInfoCard etfInfo={etfInfo} />
+        </div>
+      )}
+
       {/* 月營收 YoY（MOPS） */}
       {financials.length > 0 && (
         <div style={{ marginTop: 16 }}>
@@ -1019,6 +1035,47 @@ function FundamentalPanel({ valuation: v, price, financials = [], loading }) {
           <div style={{ fontSize: 10, color: '#334155', marginTop: 6 }}>資料來源：公開資訊觀測站 MOPS（上市公司）</div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EtfInfoCard({ etfInfo }) {
+  const { trackingIndex, distributionFreq, holdings, updatedAt } = etfInfo;
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: '#475569', marginBottom: 10 }}>
+        ETF 資訊
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        <div style={{ background: '#161f2e', border: '1px solid #3b82f625', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#475569', marginBottom: 6 }}>追蹤指數</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{trackingIndex}</div>
+        </div>
+        <div style={{ background: '#161f2e', border: '1px solid #10b98125', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#475569', marginBottom: 6 }}>配息頻率</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{distributionFreq}</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>前 10 大成分股權重</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {holdings.map((h, i) => {
+          const maxW = Math.max(...holdings.map(x => x.weight), 1);
+          const barPct = h.weight / maxW * 100;
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 50px', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>{h.name}</span>
+              <div style={{ height: 8, background: '#0d1520', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: `${barPct}%`, height: '100%', background: '#3b82f6', borderRadius: 2, opacity: 0.8 }} />
+              </div>
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#64748b', textAlign: 'right' }}>{h.weight.toFixed(1)}%</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: '#334155', marginTop: 8 }}>
+        ⚠️ 成分股權重為人工維護的靜態資料，更新日期：{updatedAt}（僅供參考，請以基金公司公告為準）
+      </div>
     </div>
   );
 }
